@@ -18,6 +18,8 @@
 #include "meshUtils.h"
 #include "sleep.h"
 #include "soc/rtc.h"
+#include "esp_private/esp_clk.h"
+#include <sys/time.h>
 #include "target_specific.h"
 #include <Preferences.h>
 #include <driver/rtc_io.h>
@@ -28,6 +30,11 @@
 // May be redefined by variant files.
 void variant_shutdown() __attribute__((weak));
 void variant_shutdown() {}
+
+RTC_DATA_ATTR uint64_t pre_sleep_ticks = 0;
+RTC_DATA_ATTR struct timeval pre_sleep_tv = {0, 0};
+RTC_DATA_ATTR bool was_deep_sleep = false;
+
 
 #if !defined(CONFIG_IDF_TARGET_ESP32S2) && !MESHTASTIC_EXCLUDE_BLUETOOTH
 void setBluetoothEnable(bool enable)
@@ -68,7 +75,6 @@ void getMacAddr(uint8_t *dmac)
 #endif
 }
 
-#if HAS_32768HZ
 #define CALIBRATE_ONE(cali_clk) calibrate_one(cali_clk, #cali_clk)
 
 static uint32_t calibrate_one(rtc_cal_sel_t cal_clk, const char *name)
@@ -82,6 +88,7 @@ static uint32_t calibrate_one(rtc_cal_sel_t cal_clk, const char *name)
     return cali_val;
 }
 
+#if HAS_32768HZ
 void enableSlowCLK()
 {
     rtc_clk_32k_enable(true);
@@ -178,9 +185,51 @@ void esp32Setup()
     res = esp_task_wdt_add(NULL);
     assert(res == ESP_OK);
 
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
 #if HAS_32768HZ
     enableSlowCLK();
+    if (rtc_clk_slow_freq_get() == RTC_SLOW_FREQ_32K_XTAL) {
+        uint32_t cal_val = rtc_clk_cal(RTC_CAL_32K_XTAL, 1000);
+        esp_clk_slowclk_cal_set(cal_val);
+    }
+#else
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+    rtc_clk_8m_enable(true, true);
+    rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
+    LOG_INFO("Switched RTC source to 8MD256");
+    uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000); // 5000 cycles for better precision
+    // cal_val = cal_val - (cal_val * 250 / 100000); // Apply 0.250% thermal bias, let's do not do this for science.
+    esp_clk_slowclk_cal_set(cal_val);
+    LOG_INFO("8MD256 Calibrated value:"" %u", cal_val);
+#else
+    LOG_INFO("Using Slowest OSC for RTC Source, calibrating...");
+    CALIBRATE_ONE(RTC_CAL_RTC_MUX); // calibrate internal LC osc
 #endif
+#endif
+
+    if (was_deep_sleep) {
+        uint64_t post_ticks = rtc_time_get();
+        uint64_t elapsed_ticks = post_ticks - pre_sleep_ticks;
+        
+        // Calculate true elapsed microseconds
+        // esp_clk_slowclk_cal_get() returns ticks in fixed-point format (1/2^19 µs)
+        uint32_t current_cal_val = esp_clk_slowclk_cal_get();
+        uint64_t true_elapsed_us = (elapsed_ticks * current_cal_val) >> 19;
+        
+        struct timeval true_tv = pre_sleep_tv;
+        true_tv.tv_sec += true_elapsed_us / 1000000ULL;
+        true_tv.tv_usec += true_elapsed_us % 1000000ULL;
+        if (true_tv.tv_usec >= 1000000L) {
+            true_tv.tv_sec++; // what if we drop this?
+            true_tv.tv_usec -= 1000000L;
+        }
+        
+        settimeofday(&true_tv, NULL);
+        was_deep_sleep = false;
+        LOG_INFO("Deep sleep true time applied. elapsed_us=%llu", (unsigned long long)true_elapsed_us);
+    }
 }
 
 /// loop code specific to ESP32 targets
@@ -261,6 +310,22 @@ void cpuDeepSleep(uint32_t msecToWake)
     // We want RTC peripherals to stay on
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M, ESP_PD_OPTION_ON);
+#endif
+
+#ifdef ESP_PD_DOMAIN_RTC_FAST_MEM
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_ON);
+#endif
+#ifdef ESP_PD_DOMAIN_RTC_SLOW_MEM
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
+#endif
+
     esp_sleep_enable_timer_wakeup(msecToWake * 1000ULL); // call expects usecs
+
+    gettimeofday(&pre_sleep_tv, NULL);
+    pre_sleep_ticks = rtc_time_get();
+    was_deep_sleep = true;
+
     esp_deep_sleep_start();                              // TBD mA sleep current (battery)
 }

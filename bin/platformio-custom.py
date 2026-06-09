@@ -235,9 +235,9 @@ for pref in userPrefs:
         pref_flags.append("-D" + pref + "=" + env.StringifyMacro(userPrefs[pref]) + "")
 
 # General options that are passed to the C and C++ compilers
-# Calculate unix epoch for current day (midnight)
+# Calculate unix epoch for current day (midnight) and subtract 1 day for safety margin
 current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-build_epoch = int(current_date.timestamp())
+build_epoch = int(current_date.timestamp()) - 86400
 
 flags = [
         "-DAPP_VERSION=" + verObj["long"],

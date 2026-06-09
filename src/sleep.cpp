@@ -25,6 +25,8 @@
 #include "mesh/wifi/WiFiAPClient.h"
 #endif
 #include "rom/rtc.h"
+#include "soc/rtc.h"
+#include "esp_private/esp_clk.h"
 #include <RadioLib.h>
 #include <driver/rtc_io.h>
 #include <driver/uart.h>
@@ -466,6 +468,21 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     // commented out because it's not that crucial;
     // if it sporadically happens the node will go into light sleep during the next round
     // assert(res == ESP_OK);
+
+#if !HAS_32768HZ && (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3))
+    // Recalibrate 8MD256 after light sleep to track broad environmental temperature changes.
+    // Because we measure while awake (warm), and sleep while cold (faster frequency),
+    // the calibration will systematically overestimate elapsed sleep time by ~0.166%.
+    // We structurally reduce the measured value by 0.250% to counteract the thermal
+    // differential and ensure the clock safely drifts backward rather than forward.
+    {
+        uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000);
+        //cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias, currently disabled to check raw drift
+        esp_clk_slowclk_cal_set(cal_val);
+        LOG_INFO("8MD256 Calibrated value:"" %u", cal_val);
+    }
+#endif
+
 #ifdef ROTARY_PRESS
     gpio_wakeup_disable((gpio_num_t)ROTARY_PRESS);
 #endif
