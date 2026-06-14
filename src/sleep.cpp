@@ -32,6 +32,8 @@
 #include <driver/uart.h>
 
 esp_sleep_source_t wakeCause; // the reason we booted this time
+extern uint64_t pre_sleep_ticks;
+extern struct timeval pre_sleep_tv;
 #endif
 #include "Throttle.h"
 
@@ -397,6 +399,10 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     // We want RTC peripherals to stay on
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M, ESP_PD_OPTION_ON);
+#endif
+
 #if defined(BUTTON_PIN) && defined(BUTTON_NEED_PULLUP)
     gpio_pullup_en((gpio_num_t)BUTTON_PIN);
 #endif
@@ -461,6 +467,9 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     assert(res == ESP_OK);
 
     console->flush();
+    gettimeofday(&pre_sleep_tv, NULL);
+    pre_sleep_ticks = rtc_time_get();
+
     res = esp_light_sleep_start();
     if (res != ESP_OK) {
         LOG_ERROR("esp_light_sleep_start result %d", res);
@@ -480,6 +489,25 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
         //cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias, currently disabled to check raw drift
         esp_clk_slowclk_cal_set(cal_val);
         LOG_INFO("8MD256 Calibrated value:"" %u", cal_val);
+
+        uint64_t post_ticks = rtc_time_get();
+        uint64_t elapsed_ticks = post_ticks - pre_sleep_ticks;
+        
+        // Calculate true elapsed microseconds
+        // esp_clk_slowclk_cal_get() returns ticks in fixed-point format (1/2^19 µs)
+        uint32_t current_cal_val = esp_clk_slowclk_cal_get();
+        uint64_t true_elapsed_us = (elapsed_ticks * current_cal_val) >> 19;
+        
+        struct timeval true_tv = pre_sleep_tv;
+        true_tv.tv_sec += true_elapsed_us / 1000000ULL;
+        true_tv.tv_usec += true_elapsed_us % 1000000ULL;
+        if (true_tv.tv_usec >= 1000000L) {
+            true_tv.tv_sec++;
+            true_tv.tv_usec -= 1000000L;
+        }
+        
+        settimeofday(&true_tv, NULL);
+        LOG_INFO("Light sleep true time applied. elapsed_us=%llu", (unsigned long long)true_elapsed_us);
     }
 #endif
 
