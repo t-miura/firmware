@@ -200,7 +200,7 @@ void esp32Setup()
     rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
     LOG_INFO("Switched RTC source to 8MD256");
     uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000); // 5000 cycles for better precision
-    // cal_val = cal_val - (cal_val * 250 / 100000); // Apply 0.250% thermal bias, let's do not do this for science.
+    cal_val = cal_val - (cal_val * 250 / 100000); // Apply 0.250% thermal bias TODO: Is this value enoough for everyone?
     esp_clk_slowclk_cal_set(cal_val);
     LOG_INFO("8MD256 Calibrated value:"" %u", cal_val);
 #else
@@ -222,7 +222,7 @@ void esp32Setup()
         true_tv.tv_sec += true_elapsed_us / 1000000ULL;
         true_tv.tv_usec += true_elapsed_us % 1000000ULL;
         if (true_tv.tv_usec >= 1000000L) {
-            true_tv.tv_sec++; // what if we drop this?
+            true_tv.tv_sec++;
             true_tv.tv_usec -= 1000000L;
         }
         

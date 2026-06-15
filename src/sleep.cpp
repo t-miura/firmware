@@ -486,9 +486,10 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     // differential and ensure the clock safely drifts backward rather than forward.
     {
         uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000);
-        //cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias, currently disabled to check raw drift
+        LOG_INFO("8MD256 Calibration raw value:"" %u", cal_val);
+        cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias
         esp_clk_slowclk_cal_set(cal_val);
-        LOG_INFO("8MD256 Calibrated value:"" %u", cal_val);
+        LOG_INFO("8MD256 Calibrated with thermal bias, value:"" %u", cal_val);
 
         uint64_t post_ticks = rtc_time_get();
         uint64_t elapsed_ticks = post_ticks - pre_sleep_ticks;
