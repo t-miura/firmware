@@ -55,3 +55,6 @@ void c6l_init();
 #define BRIGHTNESS_DEFAULT 130 // Medium Low Brightness
 
 #define SERIAL_PRINT_PORT 1
+
+// It has 32768Hz RTC Crystal
+#define HAS_32768HZ 1
