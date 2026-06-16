@@ -485,12 +485,18 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     // We structurally reduce the measured value by 0.250% to counteract the thermal
     // differential and ensure the clock safely drifts backward rather than forward.
     {
+        if (rtc_clk_slow_freq_get() != RTC_SLOW_FREQ_8MD256) {
+            rtc_clk_8m_enable(true, true);
+            rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
+            LOG_INFO("Switched RTC source to 8MD256");
+        }
         uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000);
         LOG_INFO("8MD256 Calibration raw value:"" %u", cal_val);
         cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias
         esp_clk_slowclk_cal_set(cal_val);
         LOG_INFO("8MD256 Calibrated with thermal bias, value:"" %u", cal_val);
 
+        /*
         uint64_t post_ticks = rtc_time_get();
         uint64_t elapsed_ticks = post_ticks - pre_sleep_ticks;
         
@@ -509,6 +515,7 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
         
         settimeofday(&true_tv, NULL);
         LOG_INFO("Light sleep true time applied. elapsed_us=%llu", (unsigned long long)true_elapsed_us);
+        */
     }
 #endif
 

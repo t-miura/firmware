@@ -191,8 +191,9 @@ void esp32Setup()
 #if HAS_32768HZ
     enableSlowCLK();
     if (rtc_clk_slow_freq_get() == RTC_SLOW_FREQ_32K_XTAL) {
-        uint32_t cal_val = rtc_clk_cal(RTC_CAL_32K_XTAL, 1000);
+        uint32_t cal_val = rtc_clk_cal(RTC_CAL_32K_XTAL, 5000);
         esp_clk_slowclk_cal_set(cal_val);
+        LOG_INFO("32K XTAL Calibrated value:"" %u", cal_val);
     }
 #else
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -205,11 +206,18 @@ void esp32Setup()
     LOG_INFO("8MD256 Calibrated value:"" %u", cal_val);
 #else
     LOG_INFO("Using Slowest OSC for RTC Source, calibrating...");
-    CALIBRATE_ONE(RTC_CAL_RTC_MUX); // calibrate internal LC osc
+    uint32_t cal_val = CALIBRATE_ONE(RTC_CAL_RTC_MUX); // calibrate internal LC osc
+    LOG_INFO("Slowest OSC calibrated value:"" %u", cal_val);
 #endif
 #endif
 
     if (was_deep_sleep) {
+        if (rtc_clk_slow_freq_get() != RTC_SLOW_FREQ_8MD256) {
+            rtc_clk_8m_enable(true, true);
+            rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
+            LOG_INFO("Switched RTC source to 8MD256");
+        }
+        /*
         uint64_t post_ticks = rtc_time_get();
         uint64_t elapsed_ticks = post_ticks - pre_sleep_ticks;
         
@@ -227,8 +235,9 @@ void esp32Setup()
         }
         
         settimeofday(&true_tv, NULL);
+        */
         was_deep_sleep = false;
-        LOG_INFO("Deep sleep true time applied. elapsed_us=%llu", (unsigned long long)true_elapsed_us);
+        //LOG_INFO("Deep sleep true time applied. elapsed_us=%llu", (unsigned long long)true_elapsed_us);
     }
 }
 
