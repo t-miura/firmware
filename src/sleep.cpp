@@ -494,9 +494,9 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
         LOG_INFO("8MD256 Calibration raw value:"" %u", cal_val);
         //cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias
         esp_clk_slowclk_cal_set(cal_val);
-        LOG_INFO("8MD256 Calibrated with thermal bias, value:"" %u", cal_val);
+        //LOG_INFO("8MD256 Calibrated with thermal bias, value:"" %u", cal_val);
 
-        /*
+        /*RTC SRAM Trick: Temprary disabled for raw drift test
         uint64_t post_ticks = rtc_time_get();
         uint64_t elapsed_ticks = post_ticks - pre_sleep_ticks;
         

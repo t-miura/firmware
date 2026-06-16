@@ -199,7 +199,7 @@ void esp32Setup()
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     rtc_clk_8m_enable(true, true);
     rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
-    LOG_INFO("Switched RTC source to 8MD256");
+    LOG_INFO("Switched RTC source to 8MD256, calibrating...");
     uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000); // 5000 cycles for better precision
     //cal_val = cal_val - (cal_val * 250 / 100000); // Apply 0.250% thermal bias TODO: Is this value enoough for everyone?
     esp_clk_slowclk_cal_set(cal_val);
@@ -212,12 +212,15 @@ void esp32Setup()
 #endif
 
     if (was_deep_sleep) {
-        if (rtc_clk_slow_freq_get() != RTC_SLOW_FREQ_8MD256) {
-            rtc_clk_8m_enable(true, true);
+        if (rtc_clk_slow_freq_get() != RTC_SLOW_FREQ_8MD256) { // Just in case, we check our currenct RTC clock is 8MD256.
+            rtc_clk_8m_enable(true, true); //  if not, do everything over again
             rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
-            LOG_INFO("Switched RTC source to 8MD256");
+            LOG_INFO("Switched RTC source to 8MD256, calibrating...");
+            uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000);
+            esp_clk_slowclk_cal_set(cal_val);
+            LOG_INFO("8MD256 Calibrated, value:"" %u", cal_val);
         }
-        /*
+        /*RTC SRAM Trick: Temprary disabled for raw drift test
         uint64_t post_ticks = rtc_time_get();
         uint64_t elapsed_ticks = post_ticks - pre_sleep_ticks;
         
