@@ -492,7 +492,7 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
         }
         uint32_t cal_val = rtc_clk_cal(RTC_CAL_8MD256, 5000);
         LOG_INFO("8MD256 Calibration raw value:"" %u", cal_val);
-        cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias
+        //cal_val = cal_val - (cal_val * 250 / 100000); // thermal bias
         esp_clk_slowclk_cal_set(cal_val);
         LOG_INFO("8MD256 Calibrated with thermal bias, value:"" %u", cal_val);
 
