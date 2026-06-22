@@ -11,7 +11,6 @@
 #ifdef SERIAL_HAS_ON_RECEIVE
 #undef SERIAL_HAS_ON_RECEIVE
 #endif
-#include "HWCDC.h"
 #endif
 
 #ifdef RP2040_SLOW_CLOCK
@@ -92,7 +91,7 @@ int32_t SerialConsole::runOnce()
 #if defined(SERIAL_HAS_ON_RECEIVE) || defined(CONFIG_IDF_TARGET_ESP32S2)
     return Port.available() ? delay : INT32_MAX;
 #elif defined(IS_USB_SERIAL)
-    return HWCDC::isPlugged() ? delay : (1000 * 20);
+    return Port ? delay : (1000 * 20);
 #else
     return delay;
 #endif
