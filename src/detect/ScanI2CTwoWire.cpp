@@ -230,6 +230,49 @@ bool detectSHT21SerialNumber(TwoWire *i2cBus, uint8_t address)
            crcSHT2X(&serialA[4], 1) == serialA[5] && crcSHT2X(&serialA[6], 1) == serialA[7] &&
            crcSHT2X(&serialB[0], 2) == serialB[2] && crcSHT2X(&serialB[3], 2) == serialB[5];
 }
+
+static uint8_t crcSHT3X_4X(const uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0xFF;
+    for (uint8_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (uint8_t bit = 0; bit < 8; bit++) {
+            crc = (crc & 0x80) ? (crc << 1) ^ 0x31 : crc << 1;
+        }
+    }
+    return crc;
+}
+
+bool detectSHT4X(TwoWire *i2cBus, uint8_t address)
+{
+    i2cBus->beginTransmission(address);
+    i2cBus->write(0x89);
+    if (i2cBus->endTransmission() != 0)
+        return false;
+    
+    delay(20);
+    if (i2cBus->requestFrom(address, (uint8_t)6) != 6)
+        return false;
+
+    uint8_t serial[6];
+    for (uint8_t i = 0; i < 6; i++) {
+        if (!i2cBus->available()) return false;
+        serial[i] = i2cBus->read();
+    }
+    
+    bool allFF = true;
+    bool all00 = true;
+    for (uint8_t i = 0; i < 6; i++) {
+        if (serial[i] != 0xFF) allFF = false;
+        if (serial[i] != 0x00) all00 = false;
+    }
+    if (allFF || all00) return false;
+
+    if (crcSHT3X_4X(&serial[0], 2) != serial[2]) return false;
+    if (crcSHT3X_4X(&serial[3], 2) != serial[5]) return false;
+
+    return true;
+}
 #endif
 
 #define SCAN_SIMPLE_CASE(ADDR, T, ...)                                                                                           \
@@ -507,7 +550,7 @@ void ScanI2CTwoWire::scanPort(I2CPort port, uint8_t *address, uint8_t asize)
                 if (getRegisterValue(ScanI2CTwoWire::RegisterLocation(addr, 0x7E), 2) == 0x5449) {
                     type = OPT3001;
                     logFoundDevice("OPT3001", (uint8_t)addr.address);
-                } else if (i2cCommandResponseLength(addr, 0x89, 6)) { // SHT4x serial number (6 bytes inc. CRC)
+                } else if (detectSHT4X(i2cBus, (uint8_t)addr.address)) {
                     type = SHT4X;
                     logFoundDevice("SHT4X", (uint8_t)addr.address);
                 } else {
