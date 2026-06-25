@@ -7,7 +7,7 @@
 #include "TelemetrySensor.h"
 #include <Adafruit_SHT31.h>
 
-SHT31Sensor::SHT31Sensor() : TelemetrySensor(meshtastic_TelemetrySensorType_SHT31, "SHT31") {}
+SHT31Sensor::SHT31Sensor() : TelemetrySensor(meshtastic_TelemetrySensorType_SHT31, "SHT3x") {}
 
 bool SHT31Sensor::initDevice(TwoWire *bus, ScanI2C::FoundDevice *dev)
 {
@@ -20,12 +20,17 @@ bool SHT31Sensor::initDevice(TwoWire *bus, ScanI2C::FoundDevice *dev)
 
 bool SHT31Sensor::getMetrics(meshtastic_Telemetry *measurement)
 {
-    measurement->variant.environment_metrics.has_temperature = true;
-    measurement->variant.environment_metrics.has_relative_humidity = true;
-    measurement->variant.environment_metrics.temperature = sht31.readTemperature();
-    measurement->variant.environment_metrics.relative_humidity = sht31.readHumidity();
+    float temp, hum;
+    if (sht31.readBoth(&temp, &hum)) {
+        measurement->variant.environment_metrics.has_temperature = true;
+        measurement->variant.environment_metrics.temperature = temp;
 
-    return true;
+        measurement->variant.environment_metrics.has_relative_humidity = true;
+        measurement->variant.environment_metrics.relative_humidity = hum;
+        return true;
+    }
+
+    return false;
 }
 
 #endif

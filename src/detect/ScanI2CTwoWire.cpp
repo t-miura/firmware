@@ -512,7 +512,7 @@ void ScanI2CTwoWire::scanPort(I2CPort port, uint8_t *address, uint8_t asize)
                     logFoundDevice("SHT4X", (uint8_t)addr.address);
                 } else {
                     type = SHT31;
-                    logFoundDevice("SHT31", (uint8_t)addr.address);
+                    logFoundDevice("SHT3x", (uint8_t)addr.address);
                 }
 
                 break;
