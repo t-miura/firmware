@@ -19,4 +19,15 @@ Do not expect a working Meshtastic device with this target.
 
 #define WIO_E5
 
+#define DEBUG_HEAP
+
+#define HAS_LSE 1
+#define STM32WL_LSE_DRIVE RCC_LSEDRIVE_LOW
+
+#define HAS_SENSOR 1
+
+#define HAS_GPS 1
+#define GPS_TX_PIN PA2
+#define GPS_RX_PIN PA3
+
 #endif
