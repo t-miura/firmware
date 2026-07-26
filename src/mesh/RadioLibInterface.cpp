@@ -774,9 +774,11 @@ bool RadioLibInterface::startSend(meshtastic_MeshPacket *txp)
 
         size_t numbytes = beginSending(txp);
         if (numbytes == 0) {
-            completeSending();
-            powerMon->clearState(meshtastic_PowerMon_State_Lora_TXOn);
-            startReceive();
+            if (!sendingPacket) {
+                completeSending();
+                powerMon->clearState(meshtastic_PowerMon_State_Lora_TXOn);
+                startReceive();
+            }
             return false;
         }
 
