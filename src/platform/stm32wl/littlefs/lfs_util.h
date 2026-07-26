@@ -72,7 +72,13 @@ extern "C" {
 #ifndef LFS_NO_ASSERT
 #define LFS_ASSERT(test) assert(test)
 #else
-#define LFS_ASSERT(test)
+// On STM32WL, assert() failures hang forever (see main-stm32wl.cpp's
+// __wrap___assert_func). Route internal corruption checks through a
+// recoverable handler instead, matching the nRF52 port's lfs_assert().
+extern void lfs_assert(const char *reason);
+#define LFS_ASSERT(test)                                                                                                         \
+    if (!(test))                                                                                                                 \
+    lfs_assert(#test)
 #endif
 
 // Builtin functions, these may be replaced by more efficient

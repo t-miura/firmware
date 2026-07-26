@@ -1,4 +1,6 @@
+#include "FSCommon.h"
 #include "configuration.h"
+#include "error.h"
 #include "gps/RTC.h"
 #include <Throttle.h>
 #include <cstring>
@@ -177,6 +179,50 @@ extern "C" void __wrap___assert_func(const char *, int, const char *, const char
     while (true)
         ;
     return;
+}
+
+// LittleFS internal corruption (an LFS_ASSERT failure - see lfs_util.h's LFS_NO_ASSERT branch) used to fall
+// through to the same while(true) hang as any other assert(). STM32_LittleFS::begin() is already designed to
+// treat corruption as recoverable (format and retry - see fsFormat()/NodeDB::saveToDisk()), but that only
+// works if lfs_mount() cleanly returns an error; an internal LFS_ASSERT never returns at all. Recover the
+// same way the bootloader redirect above does: a .noinit magic value survives NVIC_SystemReset() (SRAM isn't
+// cleared by it, only by an actual power cycle), so lfs_assert() can request a reformat on the next boot
+// without touching littlefs's own state from inside this callback, mid-operation.
+#define LFS_CORRUPT_MAGIC 0xC0FFEEEEUL
+
+// Placed in .noinit - not zeroed at startup, survives NVIC_SystemReset().
+__attribute__((section(".noinit"), used)) static volatile uint32_t g_lfsCorruptMagic;
+
+// Throttles repeated reformat/reboot cycles within a single power-on session (e.g. a flash sector that keeps
+// failing). Deliberately a normal static, not .noinit: it re-zeros on every boot, so the throttle only
+// applies within one uptime, matching the nRF52 lfs_assert() precedent this mirrors.
+static constexpr uint32_t LFS_CORRUPTION_RETRY_DELAY_MS = 20 * 60 * 1000;
+static unsigned long msUntilFormattingAgain = 0;
+
+extern "C" void lfs_assert(const char *reason)
+{
+    LOG_ERROR("LittleFS corruption detected: %s", reason);
+    if (msUntilFormattingAgain > millis()) {
+        const long msRemain = msUntilFormattingAgain - millis();
+        LOG_WARN("Pausing %ld seconds to avoid wearing the flash with repeated reformats", msRemain / 1000);
+        delay(msRemain);
+    }
+    LOG_INFO("Rebooting to reformat LittleFS");
+    g_lfsCorruptMagic = LFS_CORRUPT_MAGIC;
+    HAL_NVIC_SystemReset();
+}
+
+// Weak hook in FSCommon.cpp, called before FSBegin(). If the previous boot's lfs_assert() requested a
+// reformat, do it now, before FSBegin() tries (and fails) to mount the known-corrupt filesystem again.
+void preFSBegin()
+{
+    if (g_lfsCorruptMagic != LFS_CORRUPT_MAGIC)
+        return;
+    g_lfsCorruptMagic = 0;
+    msUntilFormattingAgain = millis() + LFS_CORRUPTION_RETRY_DELAY_MS;
+    RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_FLASH_CORRUPTION_UNRECOVERABLE);
+    fsFormat();
+    LOG_INFO("LittleFS format complete; restoring default settings");
 }
 
 // By default strerror has a lot of strings we probably don't use. Make it return an empty string instead.
