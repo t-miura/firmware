@@ -437,24 +437,16 @@ static void test_sendQueueStatusToPhone_fullQueueReleasesCopied()
 {
     meshtastic_QueueStatus qs = meshtastic_QueueStatus_init_zero;
     qs.res = ERRNO_OK;
-    qs.mesh_packet_id = 999;
 
-    // Fill toPhoneQueueStatusQueue (capacity is MAX_NUM_PHONE_QUEUE = 4)
-    while (service->toPhoneQueueStatusQueue.numFree() > 0) {
-        meshtastic_QueueStatus *fillCopy = queueStatusPool.allocCopy(qs);
-        service->toPhoneQueueStatusQueue.enqueue(fillCopy, 0);
+    // Send QueueStatus packets beyond queue capacity to verify full queue discards oldest safely
+    for (int i = 0; i < 10; i++) {
+        ErrorCode rc = service->sendQueueStatusToPhone(qs, ERRNO_OK, i);
+        TEST_ASSERT_EQUAL(ERRNO_OK, rc);
     }
-    TEST_ASSERT_EQUAL_UINT(0, service->toPhoneQueueStatusQueue.numFree());
 
-    ErrorCode rc = service->sendQueueStatusToPhone(qs, ERRNO_OK, 1000);
-
-    TEST_ASSERT_EQUAL(ERRNO_OK, rc);
-
-    // Clean up queue
-    while (service->toPhoneQueueStatusQueue.numFree() < service->toPhoneQueueStatusQueue.capacity()) {
-        meshtastic_QueueStatus *d = service->toPhoneQueueStatusQueue.dequeuePtr(0);
-        if (d)
-            releaseQueueStatusToPool(d);
+    // Clean up remaining items in queue
+    while (meshtastic_QueueStatus *d = service->getQueueStatusForPhone()) {
+        service->releaseQueueStatusToPool(d);
     }
 }
 
