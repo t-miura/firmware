@@ -10,6 +10,7 @@
 #include "TypeConversions.h"
 #include "airtime.h"
 #include "configuration.h"
+#include "gps/GPSLog.h"
 #include "gps/GeoCoord.h"
 #include "gps/RTC.h"
 #include "main.h"
@@ -81,13 +82,13 @@ bool PositionModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, mes
             nodeDB->setLocalPosition(p, true);
             return false;
         } else {
-            LOG_DEBUG("Incoming update from MYSELF");
+            LOG_TRACE("Incoming update from MYSELF");
             nodeDB->setLocalPosition(p);
         }
     }
 
     // Log packet size and data fields
-    LOG_DEBUG("POSITION node=0x%08x l=%d lat=%d lon=%d msl=%d hae=%d geo=%d pdop=%d hdop=%d vdop=%d siv=%d fxq=%d fxt=%d pts=%d "
+    LOG_TRACE("POSITION node=0x%08x l=%d lat=%d lon=%d msl=%d hae=%d geo=%d pdop=%d hdop=%d vdop=%d siv=%d fxq=%d fxt=%d pts=%d "
               "time=%d",
               getFrom(&mp), mp.decoded.payload.size, p.latitude_i, p.longitude_i, p.altitude, p.altitude_hae,
               p.altitude_geoidal_separation, p.PDOP, p.HDOP, p.VDOP, p.sats_in_view, p.fix_quality, p.fix_type, p.timestamp,
@@ -558,9 +559,7 @@ int32_t PositionModule::runOnce()
 
     if (lastGpsSend == 0 || msSinceLastSend >= effectiveIntervalMs) {
         if (waitingForFreshPosition) {
-#ifdef GPS_DEBUG
-            LOG_DEBUG("Skip initial position send; no fresh position since boot");
-#endif
+            LOG_DEBUG_GPS("Skip initial position send; no fresh position since boot");
         } else if (nodeDB->hasValidPosition(node)) {
             lastGpsSend = now;
 
@@ -592,11 +591,7 @@ int32_t PositionModule::runOnce()
             if (smartPosition.hasTraveledOverThreshold &&
                 Throttle::execute(
                     &lastGpsSend, minimumTimeThreshold, []() { positionModule->sendOurPosition(); },
-                    []() {
-#ifdef GPS_DEBUG
-                        LOG_DEBUG("Skip smart broadcast: time throttled");
-#endif
-                    })) {
+                    []() { LOG_DEBUG_GPS("Skip smart broadcast: time throttled"); })) {
 
                 LOG_DEBUG("Sent smart pos@%x:6 to mesh (distanceTraveled=%fm, minDistanceThreshold=%im, timeElapsed=%ims, "
                           "minTimeInterval=%ims)",
@@ -702,11 +697,7 @@ void PositionModule::handleNewPosition()
         if (smartPosition.hasTraveledOverThreshold &&
             Throttle::execute(
                 &lastGpsSend, minimumTimeThreshold, []() { positionModule->sendOurPosition(); },
-                []() {
-#ifdef GPS_DEBUG
-                    LOG_DEBUG("Skip smart broadcast: time throttled");
-#endif
-                })) {
+                []() { LOG_DEBUG_GPS("Skip smart broadcast: time throttled"); })) {
             LOG_DEBUG("Sent smart pos@%x:6 to mesh (distanceTraveled=%fm, minDistanceThreshold=%im, timeElapsed=%ims, "
                       "minTimeInterval=%ims)",
                       localPosition.timestamp, smartPosition.distanceTraveled, smartPosition.distanceThreshold, msSinceLastSend,

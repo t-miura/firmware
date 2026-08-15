@@ -1,4 +1,5 @@
 #include "GeoCoord.h"
+#include "configuration.h"
 #include <cmath>
 
 // Narrow a UTM meter value to its unsigned field, clamping non-finite/negative/oversized inputs: an
@@ -433,25 +434,13 @@ void GeoCoord::convertWGS84ToOSGB36(const double lat, const double lon, double &
     //(airyA*airyA/(airyA / sqrt(1 - airyEcc*sin(osgb.latitude)*sin(osgb.latitude)))); // Not used, no OSTN data
 }
 
-// Piecewise-linear cos(|latitude|) lookup, denser near 90 degrees where cos() is small and fast-
-// changing. Avoids linking cos()/sin()/acos() (~4.4KB) for a display/movement-threshold utility.
+#if MESHTASTIC_TRIG_APPROX
+// cos(x) minimax approx for x in [-pi/2, pi/2] ("cos_52"): https://www.ganssle.com/approx.htm
 static double cosLatitudeApprox(double latRad)
 {
-    static constexpr float kLatDeg[] = {0, 15, 30, 45, 55, 65, 72, 78, 82, 85, 87, 88.5, 89.5, 90};
-    static constexpr float kCosVal[] = {1.0f,      0.965926f, 0.866025f, 0.707107f, 0.573576f, 0.422618f, 0.309017f,
-                                        0.207912f, 0.139173f, 0.087156f, 0.052336f, 0.026177f, 0.008727f, 0.0f};
-    static_assert(sizeof(kLatDeg) / sizeof(kLatDeg[0]) == sizeof(kCosVal) / sizeof(kCosVal[0]),
-                  "kLatDeg and kCosVal must stay the same length");
-    constexpr size_t n = sizeof(kLatDeg) / sizeof(kLatDeg[0]);
-    double deg = fabs(latRad) * DEG_CONVERT;
-    if (deg >= kLatDeg[n - 1])
-        return kCosVal[n - 1];
-    size_t i = 1;
-    while (kLatDeg[i] < deg)
-        i++;
-    double x0 = kLatDeg[i - 1], x1 = kLatDeg[i];
-    double y0 = kCosVal[i - 1], y1 = kCosVal[i];
-    return y0 + (y1 - y0) * (deg - x0) / (x1 - x0);
+    constexpr double c1 = 0.9999932946, c2 = -0.4999124376, c3 = 0.0414877472, c4 = -0.0012712095;
+    double x2 = latRad * latRad;
+    return c1 + x2 * (c2 + x2 * (c3 + c4 * x2));
 }
 
 /// Approximate distance in meters via equirectangular projection (not exact spherical trig).
@@ -481,6 +470,35 @@ float GeoCoord::latLongToMeter(double lat_a, double lng_a, double lat_b, double 
 
     return (float)(6366000 * tt);
 }
+#else
+/// Ported from my old java code, returns distance in meters along the globe
+/// surface (by Haversine formula)
+float GeoCoord::latLongToMeter(double lat_a, double lng_a, double lat_b, double lng_b)
+{
+    // Don't do math if the points are the same
+    if (lat_a == lat_b && lng_a == lng_b)
+        return 0.0;
+
+    double a1 = lat_a / DEG_CONVERT;
+    double a2 = lng_a / DEG_CONVERT;
+    double b1 = lat_b / DEG_CONVERT;
+    double b2 = lng_b / DEG_CONVERT;
+
+    double meanLat = (a1 + b1) / 2;
+    double dLng = b2 - a2;
+    // Wrap to [-PI, PI]: unlike cos()/sin(), a raw longitude difference doesn't handle points that
+    // straddle the antimeridian (e.g. 179.9 and -179.9 are ~0.2 degrees apart, not ~360).
+    if (dLng > PI)
+        dLng -= 2 * PI;
+    else if (dLng < -PI)
+        dLng += 2 * PI;
+    double x = dLng * cosLatitudeApprox(meanLat);
+    double y = b1 - a1;
+    double tt = sqrt(x * x + y * y);
+
+    return (float)(6366000 * tt);
+}
+#endif
 
 /**
  * Computes the bearing in degrees between two points on Earth.  Ported from my
@@ -505,41 +523,6 @@ float GeoCoord::bearing(double lat1, double lon1, double lat2, double lon2)
     double y = sin(deltaLonRad) * cos(lat2Rad);
     double x = cos(lat1Rad) * sin(lat2Rad) - (sin(lat1Rad) * cos(lat2Rad) * cos(deltaLonRad));
     return atan2(y, x);
-}
-
-/**
- * Ported from http://www.edwilliams.org/avform147.htm#Intro
- * @brief Convert from meters to range in radians on a great circle
- * @param range_meters
- * The range in meters
- * @return range in radians on a great circle
- */
-float GeoCoord::rangeMetersToRadians(double range_meters)
-{
-    // 1 nm is 1852 meters
-    double distance_nm = range_meters * 1852;
-    return (PI / (180 * 60)) * distance_nm;
-}
-
-/**
- * Create a new point based on the passed-in point
- * Ported from http://www.edwilliams.org/avform147.htm#LL
- * @param bearing
- * The bearing in radians
- * @param range_meters
- * range in meters
- * @return GeoCoord object of point at bearing and range from initial point
- */
-std::shared_ptr<GeoCoord> GeoCoord::pointAtDistance(double bearing, double range_meters)
-{
-    double range_radians = rangeMetersToRadians(range_meters);
-    double lat1 = this->getLatitude() * 1e-7;
-    double lon1 = this->getLongitude() * 1e-7;
-    double lat = asin(sin(lat1) * cos(range_radians) + cos(lat1) * sin(range_radians) * cos(bearing));
-    double dlon = atan2(sin(bearing) * sin(range_radians) * cos(lat1), cos(range_radians) - sin(lat1) * sin(lat));
-    double lon = fmod(lon1 - dlon + PI, 2 * PI) - PI;
-
-    return std::make_shared<GeoCoord>(double(lat), double(lon), this->getAltitude());
 }
 
 /**
