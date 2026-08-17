@@ -367,12 +367,9 @@ ErrorCode MeshService::sendQueueStatusToPhone(const meshtastic_QueueStatus &qs, 
 
     lastQueueStatus = *copied;
 
-    bool enqueued = toPhoneQueueStatusQueue.enqueue(copied, 0);
-    if (!enqueued) {
-        LOG_WARN("Failed to enqueue QueueStatus to phone queue; releasing");
+    res = toPhoneQueueStatusQueue.enqueue(copied, 0);
+    if (!res)
         releaseQueueStatusToPool(copied);
-        return ERRNO_UNKNOWN;
-    }
     fromNum++;
 
     return ERRNO_OK;

@@ -364,8 +364,7 @@ meshtastic_MeshPacket *PositionModule::allocAtakPli()
     memcpy(mp->decoded.payload.bytes + 1, protobuf_bytes, proto_size);
     mp->decoded.payload.size = proto_size + 1;
 
-    LOG_DEBUG("TAK V2 PLI payload: %u bytes (1 flags + %u protobuf)", static_cast<unsigned>(mp->decoded.payload.size),
-              static_cast<unsigned>(proto_size));
+    LOG_TRACE("TAK V2 PLI payload: %zu bytes (1 flags + %zu protobuf)", mp->decoded.payload.size, proto_size);
     return mp;
 }
 
