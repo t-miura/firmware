@@ -47,8 +47,8 @@ static const meshtastic_Config_LoRaConfig_ModemPreset PRESETS_EU_868[] = {
     PRESET(SHORT_SLOW), PRESET(SHORT_FAST), PRESET(LONG_MODERATE), MODEM_PRESET_END};
 
 static const meshtastic_Config_LoRaConfig_ModemPreset PRESETS_JP[] = {
-    PRESET(LONG_FAST),   PRESET(MEDIUM_SLOW), PRESET(MEDIUM_FAST),  PRESET(SHORT_SLOW), PRESET(SHORT_FAST),
-    PRESET(NARROW_SLOW), PRESET(NARROW_FAST), PRESET(SHORT_TURBO),  PRESET(LONG_TURBO), PRESET(MEDIUM_TURBO), MODEM_PRESET_END};
+    PRESET(LONG_FAST),   PRESET(MEDIUM_SLOW), PRESET(MEDIUM_FAST), PRESET(SHORT_SLOW),   PRESET(SHORT_FAST), PRESET(NARROW_SLOW),
+    PRESET(NARROW_FAST), PRESET(SHORT_TURBO), PRESET(LONG_TURBO),  PRESET(MEDIUM_TURBO), MODEM_PRESET_END};
 
 static const meshtastic_Config_LoRaConfig_ModemPreset PRESETS_UNDEF[] = {PRESET(LONG_FAST), MODEM_PRESET_END};
 
@@ -90,7 +90,7 @@ static bool isSwappableEuRegion(meshtastic_Config_LoRaConfig_RegionCode code)
 // Region profiles: bundle preset list + regulatory parameters shared across regions
 // presets, spacing, padding, audio, licensed, text throttle, position throttle, telemetry throttle
 const RegionProfile PROFILE_STD = {PRESETS_STD, 0, 0, true, false, 0, 1, 1};
-const RegionProfile PROFILE_JP =  {PRESETS_JP,  0, 0, true, false, 0, 1, 1};
+const RegionProfile PROFILE_JP = {PRESETS_JP, 0, 0, true, false, 0, 1, 1};
 const RegionProfile PROFILE_EU868 = {PRESETS_EU_868, 0, 0, false, false, 0, 1, 1};
 const RegionProfile PROFILE_UNDEF = {PRESETS_UNDEF, 0, 0, true, false, 0, 1, 1};
 const RegionProfile PROFILE_LITE = {PRESETS_LITE, 0.4, 0.0375f, false, false, 0, 10, 10};
