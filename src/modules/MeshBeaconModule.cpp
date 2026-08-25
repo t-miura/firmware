@@ -19,6 +19,12 @@ meshtastic_ChannelSettings MeshBeaconModule::originalPrimaryChannel;
 
 static MeshBeaconModule_TargetRadioSettings targetRadioSettings[8];
 
+// Switch state, at file scope so setTargetRadioSettings() can see which entry the restore is gated
+// on. Explicit rather than inferred: "live config differs from the snapshot" missed name/PSK-only
+// swaps and fired on legitimate channel edits.
+static bool radioSwitched = false;
+static uint32_t switchedForId = 0;
+
 static bool getTargetRadioSettings(const meshtastic_MeshPacket *p, meshtastic_Config_LoRaConfig_ModemPreset *preset,
                                    uint16_t *slot, bool *legacyHopOverride = nullptr,
                                    meshtastic_Config_LoRaConfig_RegionCode *region = nullptr, bool *has_channel = nullptr,
@@ -43,6 +49,16 @@ static bool getTargetRadioSettings(const meshtastic_MeshPacket *p, meshtastic_Co
             return true;
         }
     }
+    return false;
+}
+
+// Is a target entry still live for this packet id? Unlike sendingPacket or the radio's standby
+// state, this is our own bookkeeping - it answers "has that beacon finished" without asking the radio.
+static bool targetRadioSettingsLive(uint32_t id)
+{
+    for (const auto &entry : targetRadioSettings)
+        if (entry.inUse && entry.id == id)
+            return true;
     return false;
 }
 
@@ -74,8 +90,22 @@ void MeshBeaconModule::setTargetRadioSettings(const meshtastic_MeshPacket *p, me
         if (!target && !entry.inUse)
             target = &entry;
     }
-    if (!target)
-        target = &targetRadioSettings[0];
+    if (!target) {
+        // Table full. Never evict the entry the outstanding switch is gated on: dropping it would
+        // unblock the restore and put the home config back under a beacon that has not keyed up.
+        for (auto &entry : targetRadioSettings) {
+            if (!radioSwitched || entry.id != switchedForId) {
+                target = &entry;
+                break;
+            }
+        }
+        if (!target) {
+            LOG_WARN("Beacon: target table full and every slot is in flight, drop target for 0x%08x", p->id);
+            return;
+        }
+        LOG_WARN("Beacon: target table full (%u slots), evicting packet 0x%08x for 0x%08x",
+                 (unsigned)(sizeof(targetRadioSettings) / sizeof(targetRadioSettings[0])), target->id, p->id);
+    }
     target->inUse = true;
     target->id = p->id;
     target->preset = preset;
@@ -151,13 +181,23 @@ meshtastic_ChannelSettings MeshBeaconModule::beaconChannelSettings(const meshtas
 
 bool MeshBeaconModule::reconfigureForBeaconTX(RadioInterface *iface, meshtastic_MeshPacket *p)
 {
-    // True while a beacon radio switch is in effect and still needs undoing. We track the switch
-    // explicitly rather than inferring it from "live config differs from the snapshot", because that
-    // heuristic both missed cases (a channel name/PSK swap that left preset/slot/region unchanged would
-    // never be restored) and fired falsely (a legitimate non-beacon channel edit would be reverted on
-    // the next TX). With the flag the restore fires for ANY field we changed and only when we changed
-    // it - including on TX-failure paths, which route through this same restore call.
-    static bool radioSwitched = false;
+    // Consecutive switches with no restore between them, so a multi-target run can be read off the log
+    // and the held home snapshot is attributable to a specific switch.
+    static uint8_t switchDepth = 0;
+
+    // Both branches end in iface->reconfigure(), whose setStandby() runs completeSending() and calls
+    // straight back in here. Ignore that re-entry: the outer call owns the config it is applying.
+    static bool applying = false;
+    if (applying) {
+        // Expected once per switch and once per restore. A burst of these means something new re-enters.
+        LOG_DEBUG("Beacon: ignore re-entrant reconfigure while a radio config is being applied");
+        return false;
+    }
+    struct ApplyingScope {
+        bool &flag;
+        explicit ApplyingScope(bool &f) : flag(f) { flag = true; }
+        ~ApplyingScope() { flag = false; }
+    } applyingScope(applying);
 
     meshtastic_ChannelSettings *primaryCh = &channels.getByIndex(channels.getPrimaryIndex()).settings;
     meshtastic_Config_LoRaConfig_ModemPreset targetPreset;
@@ -202,18 +242,22 @@ bool MeshBeaconModule::reconfigureForBeaconTX(RadioInterface *iface, meshtastic_
             return false;
         }
 
-        // Snapshot current (non-beacon) settings so we restore to the latest config. Skip while a
-        // switch is already active, so a second switch before the restore can't capture the beacon
-        // config as the "home" we later restore to.
+        // Snapshot the live (non-beacon) config as "home". Skipped while a switch is already active,
+        // so a second switch before the restore cannot capture the beacon config instead.
         if (!radioSwitched) {
             originalModemPreset = config.lora.modem_preset;
             originalLoraChannel = config.lora.channel_num;
             originalRegion = config.lora.region;
             originalPrimaryChannel = *primaryCh;
+            switchDepth = 0;
         }
+        switchDepth++;
 
-        LOG_INFO("Beacon: switch radio for packet 0x%08x to preset=%d slot=%u region=%d", p->id, targetPreset, targetSlot,
-                 targetRegion);
+        LOG_INFO("Beacon: switch #%u radio for packet 0x%08x to preset=%d slot=%u region=%d", switchDepth, p->id, targetPreset,
+                 targetSlot, targetRegion);
+        if (switchDepth > 1)
+            LOG_WARN("Beacon: switching again with no restore between; home preset=%d slot=%u region=%d still held",
+                     originalModemPreset, originalLoraChannel, originalRegion);
         config.lora.modem_preset = targetPreset;
         config.lora.channel_num = targetSlot;
         if (targetRegion != config.lora.region)
@@ -222,13 +266,22 @@ bool MeshBeaconModule::reconfigureForBeaconTX(RadioInterface *iface, meshtastic_
 
         channels.fixupChannel(channels.getPrimaryIndex());
         p->channel = channels.getHash(channels.getPrimaryIndex());
+        radioSwitched = true; // set before reconfigure(), so the flag never lags the radio it describes
+        switchedForId = p->id;
         iface->reconfigure();
-        radioSwitched = true;
         return true;
 
     } else if ((!p || !getTargetRadioSettings(p, nullptr, nullptr)) && radioSwitched) {
 
-        LOG_INFO("Beacon: restore radio config after TX");
+        // Only restore once the beacon that armed the switch has finished; a caller arriving here on
+        // a radio state change would put the home config back under a beacon that has not keyed up.
+        if (targetRadioSettingsLive(switchedForId)) {
+            LOG_DEBUG("Beacon: skip restore, packet 0x%08x has not finished sending", switchedForId);
+            return false;
+        }
+
+        LOG_INFO("Beacon: restore radio config after TX, undoing %u switch(es) -> preset=%d slot=%u region=%d", switchDepth,
+                 originalModemPreset, originalLoraChannel, originalRegion);
         config.lora.modem_preset = originalModemPreset;
         config.lora.channel_num = originalLoraChannel;
         config.lora.region = originalRegion;
@@ -236,8 +289,10 @@ bool MeshBeaconModule::reconfigureForBeaconTX(RadioInterface *iface, meshtastic_
         primaryCh->name[sizeof(primaryCh->name) - 1] = '\0';
 
         channels.fixupChannel(channels.getPrimaryIndex());
+        radioSwitched = false; // cleared before reconfigure(), so the flag never lags the radio it describes
+        switchDepth = 0;
+        switchedForId = 0;
         iface->reconfigure();
-        radioSwitched = false;
         return true;
     }
     return false;
