@@ -725,6 +725,14 @@ void InkHUD::MenuApplet::execute(MenuItem item)
         applyLoRaPreset(meshtastic_Config_LoRaConfig_ModemPreset_SHORT_TURBO);
         break;
 
+    case SET_PRESET_NARROW_SLOW:
+        applyLoRaPreset(meshtastic_Config_LoRaConfig_ModemPreset_NARROW_SLOW);
+        break;
+
+    case SET_PRESET_NARROW_FAST:
+        applyLoRaPreset(meshtastic_Config_LoRaConfig_ModemPreset_NARROW_FAST);
+        break;
+
     // Timezones
     case SET_TZ_US_HAWAII:
         applyTimezone("HST10");
@@ -1340,13 +1348,24 @@ void InkHUD::MenuApplet::showPage(MenuPage page)
     case NODE_CONFIG_PRESET: {
         previousPage = MenuPage::NODE_CONFIG_LORA;
         items.push_back(MenuItem("Back", previousPage));
-        items.push_back(MenuItem("Long Moderate", MenuAction::SET_PRESET_LONG_MODERATE, MenuPage::EXIT));
-        items.push_back(MenuItem("Long Fast", MenuAction::SET_PRESET_LONG_FAST, MenuPage::EXIT));
-        items.push_back(MenuItem("Medium Slow", MenuAction::SET_PRESET_MEDIUM_SLOW, MenuPage::EXIT));
-        items.push_back(MenuItem("Medium Fast", MenuAction::SET_PRESET_MEDIUM_FAST, MenuPage::EXIT));
-        items.push_back(MenuItem("Short Slow", MenuAction::SET_PRESET_SHORT_SLOW, MenuPage::EXIT));
-        items.push_back(MenuItem("Short Fast", MenuAction::SET_PRESET_SHORT_FAST, MenuPage::EXIT));
-        items.push_back(MenuItem("Short Turbo", MenuAction::SET_PRESET_SHORT_TURBO, MenuPage::EXIT));
+        if (config.lora.region == meshtastic_Config_LoRaConfig_RegionCode_JP) {
+            items.push_back(MenuItem("Long Fast", MenuAction::SET_PRESET_LONG_FAST, MenuPage::EXIT));
+            items.push_back(MenuItem("Medium Slow", MenuAction::SET_PRESET_MEDIUM_SLOW, MenuPage::EXIT));
+            items.push_back(MenuItem("Medium Fast", MenuAction::SET_PRESET_MEDIUM_FAST, MenuPage::EXIT));
+            items.push_back(MenuItem("Short Slow", MenuAction::SET_PRESET_SHORT_SLOW, MenuPage::EXIT));
+            items.push_back(MenuItem("Short Fast", MenuAction::SET_PRESET_SHORT_FAST, MenuPage::EXIT));
+            items.push_back(MenuItem("Short Turbo", MenuAction::SET_PRESET_SHORT_TURBO, MenuPage::EXIT));
+            items.push_back(MenuItem("Narrow Slow", MenuAction::SET_PRESET_NARROW_SLOW, MenuPage::EXIT));
+            items.push_back(MenuItem("Narrow Fast", MenuAction::SET_PRESET_NARROW_FAST, MenuPage::EXIT));
+        } else {
+            items.push_back(MenuItem("Long Moderate", MenuAction::SET_PRESET_LONG_MODERATE, MenuPage::EXIT));
+            items.push_back(MenuItem("Long Fast", MenuAction::SET_PRESET_LONG_FAST, MenuPage::EXIT));
+            items.push_back(MenuItem("Medium Slow", MenuAction::SET_PRESET_MEDIUM_SLOW, MenuPage::EXIT));
+            items.push_back(MenuItem("Medium Fast", MenuAction::SET_PRESET_MEDIUM_FAST, MenuPage::EXIT));
+            items.push_back(MenuItem("Short Slow", MenuAction::SET_PRESET_SHORT_SLOW, MenuPage::EXIT));
+            items.push_back(MenuItem("Short Fast", MenuAction::SET_PRESET_SHORT_FAST, MenuPage::EXIT));
+            items.push_back(MenuItem("Short Turbo", MenuAction::SET_PRESET_SHORT_TURBO, MenuPage::EXIT));
+        }
         items.push_back(MenuItem("Exit", MenuPage::EXIT));
         break;
     }

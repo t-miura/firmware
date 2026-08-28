@@ -315,41 +315,61 @@ void menuHandler::FrequencySlotPicker()
 
 void menuHandler::radioPresetPicker()
 {
-    static const RadioPresetOption presetOptions[] = {
-        {"Back", OptionsAction::Back},
-        {"LongTurbo", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_LONG_TURBO},
-        {"LongModerate", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_LONG_MODERATE},
-        {"LongFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST},
-        {"MediumSlow", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_SLOW},
-        {"MediumFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_FAST},
-        {"ShortSlow", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_SLOW},
-        {"ShortFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_FAST},
-        {"ShortTurbo", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_TURBO},
+    auto onPresetSelected = [](const RadioPresetOption &option, int) -> void {
+        if (option.action == OptionsAction::Back) {
+            menuHandler::menuQueue = menuHandler::LoraMenu;
+            screen->runNow();
+            return;
+        }
+
+        if (!option.hasValue) {
+            return;
+        }
+
+        config.lora.modem_preset = option.value;
+        config.lora.channel_num = 0;        // Reset to default channel for the preset
+        config.lora.override_frequency = 0; // Clear any custom frequency
+        service->reloadConfig(SEGMENT_CONFIG);
+        rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
     };
 
-    constexpr size_t presetCount = sizeof(presetOptions) / sizeof(presetOptions[0]);
-    static std::array<const char *, presetCount> presetLabels{};
+    if (config.lora.region == meshtastic_Config_LoRaConfig_RegionCode_JP) {
+        static const RadioPresetOption presetOptionsJP[] = {
+            {"Back", OptionsAction::Back},
+            {"LongFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST},
+            {"MediumSlow", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_SLOW},
+            {"MediumFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_FAST},
+            {"ShortSlow", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_SLOW},
+            {"ShortFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_FAST},
+            {"ShortTurbo", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_TURBO},
+            {"NarrowSlow", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_NARROW_SLOW},
+            {"NarrowFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_NARROW_FAST},
+        };
 
-    auto bannerOptions =
-        createStaticBannerOptions("Radio Preset", presetOptions, presetLabels, [](const RadioPresetOption &option, int) -> void {
-            if (option.action == OptionsAction::Back) {
-                menuHandler::menuQueue = menuHandler::LoraMenu;
-                screen->runNow();
-                return;
-            }
+        constexpr size_t presetCountJP = sizeof(presetOptionsJP) / sizeof(presetOptionsJP[0]);
+        static std::array<const char *, presetCountJP> presetLabelsJP{};
 
-            if (!option.hasValue) {
-                return;
-            }
+        auto bannerOptions = createStaticBannerOptions("Radio Preset", presetOptionsJP, presetLabelsJP, onPresetSelected);
+        screen->showOverlayBanner(bannerOptions);
+    } else {
+        static const RadioPresetOption presetOptions[] = {
+            {"Back", OptionsAction::Back},
+            {"LongTurbo", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_LONG_TURBO},
+            {"LongModerate", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_LONG_MODERATE},
+            {"LongFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST},
+            {"MediumSlow", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_SLOW},
+            {"MediumFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_MEDIUM_FAST},
+            {"ShortSlow", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_SLOW},
+            {"ShortFast", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_FAST},
+            {"ShortTurbo", OptionsAction::Select, meshtastic_Config_LoRaConfig_ModemPreset_SHORT_TURBO},
+        };
 
-            config.lora.modem_preset = option.value;
-            config.lora.channel_num = 0;        // Reset to default channel for the preset
-            config.lora.override_frequency = 0; // Clear any custom frequency
-            service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
-        });
+        constexpr size_t presetCount = sizeof(presetOptions) / sizeof(presetOptions[0]);
+        static std::array<const char *, presetCount> presetLabels{};
 
-    screen->showOverlayBanner(bannerOptions);
+        auto bannerOptions = createStaticBannerOptions("Radio Preset", presetOptions, presetLabels, onPresetSelected);
+        screen->showOverlayBanner(bannerOptions);
+    }
 }
 
 void menuHandler::twelveHourPicker()

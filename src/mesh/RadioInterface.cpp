@@ -546,6 +546,16 @@ void RadioInterface::bootstrapLoRaConfigFromPreset(meshtastic_Config_LoRaConfig 
     uint8_t cr = 0;
     modemPresetToParams(loraConfig.modem_preset, regionWideLora, bwKHz, sf, cr);
 
+    // Enforce JP region safety limits (no LONG_SLOW, LONG_MODERATE, LITE_FAST, LITE_SLOW)
+    if (loraConfig.region == meshtastic_Config_LoRaConfig_RegionCode_JP &&
+        (loraConfig.modem_preset == meshtastic_Config_LoRaConfig_ModemPreset_LONG_SLOW ||
+         loraConfig.modem_preset == meshtastic_Config_LoRaConfig_ModemPreset_LONG_MODERATE ||
+         loraConfig.modem_preset == meshtastic_Config_LoRaConfig_ModemPreset_LITE_SLOW ||
+         loraConfig.modem_preset == meshtastic_Config_LoRaConfig_ModemPreset_LITE_FAST)) {
+        loraConfig.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+        modemPresetToParams(loraConfig.modem_preset, regionWideLora, bwKHz, sf, cr);
+    }
+
     // If selected preset requests a bandwidth larger than the region span, fall back to LONG_FAST.
     if (r->code != meshtastic_Config_LoRaConfig_RegionCode_UNSET && (r->freqEnd - r->freqStart) < (bwKHz / 1000.0f)) {
         loraConfig.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
