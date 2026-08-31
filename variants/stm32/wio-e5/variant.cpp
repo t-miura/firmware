@@ -4,13 +4,14 @@
 
 // This override routes PA2/PA3 to USART2 (AF7) instead of LPUART1 (AF8).
 // Currently also drops some of PinMap_UART_TX/RX which are unable to utilize on LoRa-E5 anyways.
-// May restore LPUART1 on PC1/PC0, but this has its own quirks: only works at >9600 baud with LSE enabled,
+// May restore LPUART1 on PC1/PC0, but with its own quirks: baud rate is capped to max. 9600 baud with LSE enabled(see below for details),
 // Also PC1/PC0 is not defined in variant.h, so if someone wants third-but-slow UART, some works are required.
 //
 // Details(to be refined): tl;dr: We can't use LPUART for our usecases(at least, for now&as far as i researched&tested)
 // PA2/PA3 default to LPUART1 in the STM32WL Arduino core's PeripheralPins.c,
-// but the Seeed LoRa-E5 datasheet (Table 1) documents them as USART2_TX/RX,
-// Which is also correct as these pins' function can be alternated on the code.
+// while the Seeed LoRa-E5 datasheet (Table 1) documents them as USART2_TX/RX.
+// Both are correct as these pins' function can be alternated on the code,
+// and STM32duino has a way to pick either LP/USART, which we can't use it right now(see below, too).
 //
 // Even though, with LSE as the LPUART kernel clock, baud rates above ~10.9 kbaud are
 // unreachable (BRR < 768), hangs while GPS auto-baud probing at boot,
