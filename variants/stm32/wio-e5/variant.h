@@ -29,7 +29,8 @@ Do not expect a working Meshtastic device with this target.
 #define HAS_SENSOR 1
 
 #define HAS_GPS 1
-#define GPS_TX_PIN PA2
-#define GPS_RX_PIN PA3
+#define GPS_SERIAL_PORT SerialLP1
+#define GPS_TX_PIN PC1
+#define GPS_RX_PIN PC0
 
 #endif
