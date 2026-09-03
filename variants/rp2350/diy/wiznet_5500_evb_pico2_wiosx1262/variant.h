@@ -41,15 +41,15 @@
 #undef LORA_MOSI
 #undef LORA_CS
 
-#define LORA_SCK 10 // SCK
+#define LORA_SCK 10  // SCK
 #define LORA_MOSI 11 // MOSI
 #define LORA_MISO 12 // MISO
-#define LORA_CS 13 // NSS
+#define LORA_CS 13   // NSS
 
 #define LORA_DIO0 RADIOLIB_NC
 #define LORA_RESET 15 // RESET
-#define LORA_DIO1 14 // IRQ
-#define LORA_DIO2 3  // RF-SW
+#define LORA_DIO1 14  // IRQ
+#define LORA_DIO2 3   // RF-SW
 #define LORA_DIO3 RADIOLIB_NC
 
 #ifdef USE_SX1262
