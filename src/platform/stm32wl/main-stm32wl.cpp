@@ -1,3 +1,4 @@
+#undef DEBUG_MUTE
 #include "FSCommon.h"
 #include "configuration.h"
 #include "error.h"

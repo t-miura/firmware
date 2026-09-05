@@ -1,3 +1,4 @@
+#undef DEBUG_MUTE
 #include <cstring> // Include for strstr
 #include <vector>
 
