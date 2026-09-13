@@ -93,6 +93,23 @@ struct RegionInfo {
             n++;
         return n;
     }
+    float getSpacing(float bwKHz = 0) const
+    {
+        if (code == meshtastic_Config_LoRaConfig_RegionCode_JP)
+            return 0.0f;
+        return profile ? profile->spacing : 0.0f;
+    }
+    float getPadding(float bwKHz = 0) const
+    {
+        if (code == meshtastic_Config_LoRaConfig_RegionCode_JP) {
+            // ARIB STD-T108: 200 kHz unit channel grid. Center LoRa BW symmetrically within ceil(bw/200kHz) unit channels.
+            const float bw = (bwKHz > 0.0f ? bwKHz : 250.0f);
+            const int numUnits = ((int)(bw + 0.5f) + 199) / 200;
+            const float slotWidth = numUnits * 0.200f;
+            return (slotWidth - (bw / 1000.0f)) * 0.5f;
+        }
+        return profile ? profile->padding : 0.0f;
+    }
 };
 
 extern const RegionInfo regions[];
