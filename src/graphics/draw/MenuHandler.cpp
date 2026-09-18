@@ -9,6 +9,7 @@
 #include "MeshService.h"
 #include "MessageStore.h"
 #include "NodeDB.h"
+#include "UptimeClock.h"
 #include "buzz.h"
 #include "graphics/Backlight.h"
 #include "graphics/Screen.h"
@@ -27,6 +28,9 @@
 #include "mesh/RadioLibInterface.h"
 #include "modules/AdminModule.h"
 #include "modules/CannedMessageModule.h"
+#if !MESHTASTIC_EXCLUDE_MQTT
+#include "mqtt/MQTT.h"
+#endif
 #include "modules/ExternalNotificationModule.h"
 #include "modules/GeofenceModule.h"
 #include "modules/KeyVerificationModule.h"
@@ -288,10 +292,10 @@ static void applyLoraRegion(meshtastic_Config_LoRaConfig_RegionCode region, bool
     if (getEffectiveDutyCycle() < 100) {
         config.lora.ignore_mqtt = true;
     }
-    if (strncmp(moduleConfig.mqtt.root, default_mqtt_root, strlen(default_mqtt_root)) == 0) {
-        snprintf(moduleConfig.mqtt.root, sizeof(moduleConfig.mqtt.root), "%s/%s", default_mqtt_root, myRegion->name);
+#if !MESHTASTIC_EXCLUDE_MQTT
+    if (MQTT::applyRegionRootTopic(myRegion->name))
         changes |= SEGMENT_MODULECONFIG;
-    }
+#endif
 #if !MESHTASTIC_EXCLUDE_GPS
     // Enable gps if it was previously disabled due to region not being set
     if (gps != nullptr && !gps->isEnabled() && config.position.gps_mode == meshtastic_Config_PositionConfig_GpsMode_ENABLED)
@@ -478,7 +482,7 @@ void menuHandler::deviceRolePicker()
             config.device.role = meshtastic_Config_DeviceConfig_Role_TRACKER;
         }
         service->reloadConfig(SEGMENT_CONFIG);
-        rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+        rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
     };
     screen->showOverlayBanner(bannerOptions);
 }
@@ -1872,12 +1876,12 @@ void menuHandler::resetNodeDBMenu()
             LOG_INFO("Initiate node-db reset");
             nodeDB->resetNodes();
             disableBluetooth();
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         } else if (selected == 2) {
             LOG_INFO("Initiate node-db reset, keep favorites");
             nodeDB->resetNodes(1);
             disableBluetooth();
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         } else if (selected == 0) {
             menuQueue = NodeBaseMenu;
             screen->runNow();
@@ -2072,12 +2076,12 @@ void menuHandler::GPSSmartPositionMenu()
             config.position.position_broadcast_smart_enabled = true;
             saveUIConfig();
             service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         } else if (selected == 2) {
             config.position.position_broadcast_smart_enabled = false;
             saveUIConfig();
             service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         }
     };
     bannerOptions.InitialSelected = config.position.position_broadcast_smart_enabled ? 1 : 2;
@@ -2132,7 +2136,7 @@ void menuHandler::GPSUpdateIntervalMenu()
         if (selected != 0) {
             saveUIConfig();
             service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         }
     };
 
@@ -2222,7 +2226,7 @@ void menuHandler::GPSPositionBroadcastMenu()
         if (selected != 0) {
             saveUIConfig();
             service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         }
     };
 
@@ -2363,7 +2367,7 @@ void menuHandler::switchToMUIMenu()
             config.display.displaymode = meshtastic_Config_DisplayConfig_DisplayMode_COLOR;
             config.bluetooth.enabled = false;
             service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         }
     };
     screen->showOverlayBanner(bannerOptions);
@@ -2384,7 +2388,7 @@ void menuHandler::rebootMenu()
             IF_SCREEN(screen->showSimpleBanner("Rebooting...", 0));
             nodeDB->saveToDisk();
             messageStore.saveToFlash();
-            rebootAtMsec = millis() + DEFAULT_REBOOT_SECONDS * 1000;
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         } else {
             menuQueue = PowerMenu;
             screen->runNow();
@@ -2687,12 +2691,12 @@ void menuHandler::wifiToggleMenu()
             config.network.wifi_enabled = false;
             config.bluetooth.enabled = true;
             service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         } else if (selected == Wifi_enable) {
             config.network.wifi_enabled = true;
             config.bluetooth.enabled = false;
             service->reloadConfig(SEGMENT_CONFIG);
-            rebootAtMsec = (millis() + DEFAULT_REBOOT_SECONDS * 1000);
+            rebootAtMsec = Time::timerEndsAtMillis(DEFAULT_REBOOT_SECONDS * 1000);
         }
     };
     screen->showOverlayBanner(bannerOptions);
@@ -3296,9 +3300,11 @@ void menuHandler::handleMenuSwitch(OLEDDisplay *display)
     case MessageBubblesMenu:
         messageBubblesMenu();
         break;
+#if GRAPHICS_TFT_COLORING_ENABLED // the Theme option only exists with TFT coloring
     case ThemeMenu:
         themeMenu();
         break;
+#endif
     case HamModeConfirm:
         hamModeConfirmMenu();
         break;
