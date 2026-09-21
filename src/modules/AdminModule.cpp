@@ -1068,11 +1068,11 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c, bool fromOthers)
                 if (getEffectiveDutyCycle() < 100) {
                     validatedLora.ignore_mqtt = true; // Ignore MQTT by default if region has a duty cycle limit
                 }
-                if (strncmp(moduleConfig.mqtt.root, default_mqtt_root, strlen(default_mqtt_root)) == 0) {
-                    //  Default root is in use, so subscribe to the appropriate MQTT topic for this region
-                    snprintf(moduleConfig.mqtt.root, sizeof(moduleConfig.mqtt.root), "%s/%s", default_mqtt_root, myRegion->name);
-                }
-                changes |= SEGMENT_CONFIG | SEGMENT_MODULECONFIG;
+#if !MESHTASTIC_EXCLUDE_MQTT
+                if (MQTT::applyRegionRootTopic(myRegion->name))
+                    changes |= SEGMENT_MODULECONFIG;
+#endif
+                changes |= SEGMENT_CONFIG;
             } else {
                 //  Region validation has failed, so just copy all of the old config over the new config
                 validatedLora = oldLoraConfig;
@@ -1108,11 +1108,11 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c, bool fromOthers)
                 if (getEffectiveDutyCycle() < 100) {
                     validatedLora.ignore_mqtt = true; // Ignore MQTT by default if region has a duty cycle limit
                 }
-                if (strncmp(moduleConfig.mqtt.root, default_mqtt_root, strlen(default_mqtt_root)) == 0) {
-                    //  Default root is in use, so subscribe to the appropriate MQTT topic for this region
-                    snprintf(moduleConfig.mqtt.root, sizeof(moduleConfig.mqtt.root), "%s/%s", default_mqtt_root, myRegion->name);
-                }
-                changes = SEGMENT_CONFIG | SEGMENT_MODULECONFIG;
+#if !MESHTASTIC_EXCLUDE_MQTT
+                if (MQTT::applyRegionRootTopic(myRegion->name))
+                    changes |= SEGMENT_MODULECONFIG;
+#endif
+                changes |= SEGMENT_CONFIG;
             }
             //  use_preset and bandwidth are coerced into valid values by the check.
         }
@@ -1819,10 +1819,6 @@ void AdminModule::handleGetDeviceConnectionStatus(const meshtastic_MeshPacket &r
     if (config.bluetooth.enabled && nrf52Bluetooth) {
         conn.bluetooth.is_connected = nrf52Bluetooth->isConnected();
     }
-#elif defined(ARCH_NRF54L15)
-    if (config.bluetooth.enabled && nrf54l15Bluetooth) {
-        conn.bluetooth.is_connected = nrf54l15Bluetooth->isConnected();
-    }
 #endif
 #endif
     conn.has_serial = true; // No serial-less devices
@@ -2512,9 +2508,6 @@ void disableBluetooth()
 #elif defined(ARCH_NRF52)
     if (nrf52Bluetooth)
         nrf52Bluetooth->shutdown();
-#elif defined(ARCH_NRF54L15)
-    if (nrf54l15Bluetooth)
-        nrf54l15Bluetooth->shutdown();
 #endif
 #endif
 }
