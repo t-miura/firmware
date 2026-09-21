@@ -110,7 +110,7 @@ RadioTxHook::PreTxAction JapanTxHook::beforeTransmit(RadioInterface *iface, mesh
     if (!performCarrierSense(iface)) {
         busyCount++;
         const uint32_t backoffMs = computeBackoffMs(busyCount);
-        uint32_t deadline = Time::getMillis() + backoffMs;
+        uint32_t deadline = Time::timerEndsAtMillis(backoffMs);
         if (deadline == 0)
             deadline = 1;
         if (!p->tx_after || !Throttle::deadlinePassedAt(p->tx_after, deadline))
