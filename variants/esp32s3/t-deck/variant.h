@@ -49,7 +49,7 @@
 #define SPI_MISO (38)
 #define SPI_CS (39)
 #define SDCARD_CS SPI_CS
-#define SD_SPI_FREQUENCY 25000000U
+#define SD_SPI_FREQUENCY 20000000U
 
 #define BATTERY_PIN 4 // A battery voltage measurement pin, voltage divider connected here to measure battery voltage
 // ratio of voltage divider = 2.0 (RD2=100k, RD3=100k)
