@@ -26,7 +26,10 @@ void earlyInitVariant()
     digitalWrite(LORA_RESET, LOW);
     delay(10);
     digitalWrite(LORA_RESET, HIGH);
-
-    // Allow peripherals to fully settle
+    delay(10);
+    gpio_intr_disable((gpio_num_t)LORA_DIO1);
+    gpio_wakeup_disable((gpio_num_t)LORA_DIO1);
+    
+    // Allow peripherals (Keyboard C3, SD card, SX1262 STDBY_RC) to fully settle
     delay(100);
 }
