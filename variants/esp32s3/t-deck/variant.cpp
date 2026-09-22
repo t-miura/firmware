@@ -10,14 +10,24 @@ void earlyInitVariant()
     // TF Card , Display backlight(AW9364DNR) , AN48841B(Trackball) , ES7210(Decoder)
     pinMode(KB_POWERON, OUTPUT);
     digitalWrite(KB_POWERON, HIGH);
-    // T-Deck has all three SPI peripherals (TFT, SD, LoRa) attached to the same SPI bus
-    // We need to initialize all CS pins in advance otherwise there will be SPI communication issues
-    // e.g. when detecting the SD card
+
+    // T-Deck has all three SPI peripherals (TFT, SD, LoRa) attached to the same SPI bus.
+    // Deselect all CS pins first so NSS is held HIGH and the bus is quiescent during reset.
     pinMode(LORA_CS, OUTPUT);
     digitalWrite(LORA_CS, HIGH);
     pinMode(SDCARD_CS, OUTPUT);
     digitalWrite(SDCARD_CS, HIGH);
     pinMode(TFT_CS, OUTPUT);
     digitalWrite(TFT_CS, HIGH);
+
+    // Hardware reset SX1262 so DIO1 drops LOW and stops any pending IRQs.
+    // CS pins are already HIGH above so NSS is deselected while NRESET is asserted.
+    pinMode(LORA_RESET, OUTPUT);
+    digitalWrite(LORA_RESET, LOW);
+    delay(10);
+    digitalWrite(LORA_RESET, HIGH);
+    delay(10);
+    gpio_intr_disable((gpio_num_t)LORA_DIO1);
+    gpio_wakeup_disable((gpio_num_t)LORA_DIO1);
     delay(100);
 }
