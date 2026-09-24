@@ -17,7 +17,8 @@ class JapanTxHook : public RadioTxHook
     static constexpr uint32_t MAX_TX_DURATION_MS = 4000;
     static constexpr uint32_t BACKOFF_BASE_MS = 250;
     static constexpr uint32_t BACKOFF_MAX_MS = 4000;
-    static constexpr int16_t RSSI_UNAVAILABLE = 0;
+    // Upper bound accommodates SX126x and SX127x maximum absolute RF input (10 dBm)
+    static constexpr int16_t RSSI_VALID_MAX = 10;
     // Lower bound accommodates SX126x (-141 dBm), SX127x (-164 dBm HF offset), and LR11x0, above SPI errors (< -500).
     static constexpr int16_t RSSI_VALID_MIN = -192;
     static constexpr int16_t RSSI_INVALID_DRIVER_ERROR = -706;
@@ -36,8 +37,9 @@ class JapanTxHook : public RadioTxHook
     static bool isJapanRegion();
     static uint32_t computeBackoffMs(uint32_t count);
 
-    // Valid RSSI must be strictly negative (< 0 rejects 0 fallback and positive saturation) and >= -192 dBm.
-    static bool isValidRssi(int16_t rssi) { return rssi < 0 && rssi >= RSSI_VALID_MIN; }
+    // Valid RSSI must be within possible range.
+    // FIXME: Treat "invalid RSSI" 0 dBm as valid here, backoff will be applied as it is above the carrier sense threshold anyways
+    static bool isValidRssi(int16_t rssi) { return rssi <= RSSI_VALID_MAX && rssi >= RSSI_VALID_MIN; }
 
     bool performCarrierSense(RadioInterface *iface);
 

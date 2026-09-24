@@ -422,11 +422,11 @@ void test_carrier_sense_unavailable_and_invalid_rssi_does_not_block(void)
     JapanTxHook hook;
     MockRadioInterface radio;
 
-    // Transient 0 dBm (unavailable) alongside valid clear samples must not falsely trigger busy
-    radio.rssiSequence = {-95, -95, JapanTxHook::RSSI_UNAVAILABLE, -95, -95};
+    // Transient 11 dBm (invalid) RSSI measurement alongside valid clear samples must not falsely trigger busy
+    radio.rssiSequence = {-95, -95, 11, -95, -95};
     radio.sequenceIndex = 0;
     Time::setTestMillis(1000);
-    TEST_ASSERT_TRUE_MESSAGE(hook.performCarrierSense(&radio), "0 dBm glitch alongside valid samples must not block");
+    TEST_ASSERT_TRUE_MESSAGE(hook.performCarrierSense(&radio), "11 dBm glitch alongside valid samples must not block");
 
     // Negative driver error codes (e.g. -706) alongside valid clear samples must not falsely trigger busy
     radio.rssiSequence = {-95, -95, JapanTxHook::RSSI_INVALID_DRIVER_ERROR, -95, -95};
@@ -504,18 +504,17 @@ void test_deadline_wrap_zero_remapped_to_one(void)
 
 void test_is_valid_rssi_helper(void)
 {
-    // Unavailable / Default
-    TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(0));
-    // Positive values (garbage or error)
-    TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(1));
-    TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(10));
-    TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(127));
     // Out of physical receiver range and RadioLib error codes (< -192)
     TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(-193));
     TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(-500));
     TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(-706));
     TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(-1000));
-    // Valid operational RSSI readings [-192, -1]
+    // Positive and invalid values (garbage or error)
+    TEST_ASSERT_FALSE(JapanTxHook::isValidRssi(127));
+    // Valid operational RSSI readings [-192, 10]
+    TEST_ASSERT_TRUE(JapanTxHook::isValidRssi(10));
+    TEST_ASSERT_TRUE(JapanTxHook::isValidRssi(5));
+    TEST_ASSERT_TRUE(JapanTxHook::isValidRssi(0));
     TEST_ASSERT_TRUE(JapanTxHook::isValidRssi(-1));
     TEST_ASSERT_TRUE(JapanTxHook::isValidRssi(-50));
     TEST_ASSERT_TRUE(JapanTxHook::isValidRssi(-80));
@@ -536,11 +535,11 @@ void test_carrier_sense_positive_rssi_and_error_codes_do_not_block(void)
     JapanTxHook hook;
     MockRadioInterface radio;
 
-    // Positive RSSI (+10 dBm) glitch alongside valid samples must not be treated as valid busy signal
-    radio.rssiSequence = {-95, -95, 10, -95, -95};
+    // Positive RSSI (+11 dBm) glitch alongside valid samples must not be treated as valid busy signal
+    radio.rssiSequence = {-95, -95, 11, -95, -95};
     radio.sequenceIndex = 0;
     Time::setTestMillis(1000);
-    TEST_ASSERT_TRUE_MESSAGE(hook.performCarrierSense(&radio), "+10 dBm glitch alongside valid samples must not block");
+    TEST_ASSERT_TRUE_MESSAGE(hook.performCarrierSense(&radio), "+11 dBm glitch alongside valid samples must not block");
 
     // Negative error code (-706) glitch alongside valid samples must not be treated as valid busy signal
     radio.rssiSequence = {-95, -95, -706, -95, -95};
