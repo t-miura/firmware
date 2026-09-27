@@ -24,7 +24,6 @@
 #endif
 #include "rom/rtc.h"
 #include <RadioLib.h>
-#include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <driver/uart.h>
 
@@ -519,9 +518,9 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     }
     // commented out because it's not that crucial;
     // if it sporadically happens the node will go into light sleep during the next round
+    // assert(res == ESP_OK);
 #ifdef ROTARY_PRESS
     gpio_wakeup_disable((gpio_num_t)ROTARY_PRESS);
-    gpio_intr_disable((gpio_num_t)ROTARY_PRESS);
 #endif
 #ifdef KB_INT
     gpio_wakeup_disable((gpio_num_t)KB_INT);
@@ -532,11 +531,9 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
 #ifdef BUTTON_PIN
     // Disable wake-on-button interrupt. Re-attach normal button-interrupts
     gpio_wakeup_disable(pin);
-    gpio_intr_disable(pin);
 #endif
 #ifdef INPUTDRIVER_WAKE_BTN_PIN
     gpio_wakeup_disable((gpio_num_t)INPUTDRIVER_WAKE_BTN_PIN);
-    gpio_intr_disable((gpio_num_t)INPUTDRIVER_WAKE_BTN_PIN);
 #undef INPUTDRIVER_WAKE_BTN_PIN
 #endif
 #if defined(WAKE_ON_TOUCH)
@@ -546,7 +543,7 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
     // Unconditional: the config can have changed while we were asleep.
     gpio_wakeup_disable((gpio_num_t)MOTION_WAKE_INT_PIN);
 #endif
-#if defined(LORA_DIO1) && (LORA_DIO1 != RADIOLIB_NC)
+#if !defined(SOC_PM_SUPPORT_EXT_WAKEUP) && defined(LORA_DIO1) && (LORA_DIO1 != RADIOLIB_NC)
     if (radioType != RF95_RADIO) {
         gpio_wakeup_disable((gpio_num_t)LORA_DIO1);
     }
