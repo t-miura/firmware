@@ -20,6 +20,7 @@
 
 #ifdef ARCH_ESP32
 #include "esp_pm.h"
+#include "hal/wdt_hal.h"
 #if HAS_WIFI
 #include "mesh/wifi/WiFiAPClient.h"
 #endif
@@ -62,6 +63,9 @@ Observable<void *> notifyLightSleep;
 
 /// Called to tell observers that light sleep has just ended, and why it ended
 Observable<esp_sleep_wakeup_cause_t> notifyLightSleepEnd;
+
+/// The RTC watchdog context, used to feed the watchdog before and after light sleep to prevent it from firing during sleep.
+wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
 #endif
 
 // deep sleep support
@@ -625,11 +629,23 @@ esp_sleep_wakeup_cause_t doLightSleep(uint64_t sleepMsec) // FIXME, use a more r
             LOG_WARN("LoRa IRQ stuck high, sleep with LoRa wake disarmed");
             disarmLoraWake();
         }
+
+        // Feed the RTC watchdog before sleeping, or it will fire during sleep and reset the CPU.
+        wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+        wdt_hal_feed(&rtc_wdt_ctx);
+        wdt_hal_write_protect_enable(&rtc_wdt_ctx);
+
         res = esp_light_sleep_start();
     }
     if (res != ESP_OK) {
         LOG_ERROR("esp_light_sleep_start result %d", res);
     }
+
+    // Feed the RTC watchdog after sleeping, or it will fire during sleep and reset the CPU.
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_feed(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);
+
     // commented out because it's not that crucial;
     // if it sporadically happens the node will go into light sleep during the next round
     // assert(res == ESP_OK);
