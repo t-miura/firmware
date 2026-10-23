@@ -61,6 +61,11 @@ L76K GPS Module Information : https://www.seeedstudio.com/L76K-GNSS-Module-for-S
 #define I2C_SDA 5
 #define I2C_SCL 6
 
+// Enable optional RTC on I2C
+#define HAS_RTC 1
+// I2C R2C Example:PCF8563 on Seeed Expansion Board
+#define PCF8563_RTC 0x51
+
 // XIAO S3 LORA module
 #define USE_SX1262
 
