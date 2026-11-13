@@ -1,23 +1,27 @@
-#ifndef ASYNC_UDP_H
-#define ASYNC_UDP_H
+#ifndef ETH_ASYNC_UDP_H
+#define ETH_ASYNC_UDP_H
 
 #include "configuration.h"
 
-#if HAS_ETHERNET
+#if HAS_ETHERNET && !defined(ARCH_ESP32)
 
 #include "concurrency/OSThread.h"
 #include <IPAddress.h>
 #include <Print.h>
+#ifdef USE_ARDUINO_ETHERNET
+#include <Ethernet.h>
+#else
 #include <RAK13800_W5100S.h>
+#endif
 #include <cstdint>
 #include <functional>
 
-class AsyncUDPPacket;
+class EthAsyncUDPPacket;
 
-class AsyncUDP : public Print, private concurrency::OSThread
+class EthAsyncUDP : public Print, private concurrency::OSThread
 {
   public:
-    AsyncUDP();
+    EthAsyncUDP();
     explicit operator bool() const { return localPort != 0; }
 
     bool listenMulticast(IPAddress multicastIP, uint16_t port, uint8_t ttl = 64);
@@ -26,20 +30,20 @@ class AsyncUDP : public Print, private concurrency::OSThread
 
     size_t write(uint8_t b) override;
     size_t write(const uint8_t *data, size_t len) override;
-    void onPacket(const std::function<void(AsyncUDPPacket)> &callback);
+    void onPacket(const std::function<void(EthAsyncUDPPacket)> &callback);
 
   private:
     EthernetUDP udp;
     uint16_t localPort;
     volatile bool isSending = false;
-    std::function<void(AsyncUDPPacket)> _onPacket;
+    std::function<void(EthAsyncUDPPacket)> _onPacket;
     virtual int32_t runOnce() override;
 };
 
-class AsyncUDPPacket
+class EthAsyncUDPPacket
 {
   public:
-    explicit AsyncUDPPacket(EthernetUDP &source);
+    explicit EthAsyncUDPPacket(EthernetUDP &source);
 
     IPAddress remoteIP();
     uint16_t length();
@@ -55,11 +59,14 @@ class AsyncUDPPacket
     uint8_t _buffer[BUF_SIZE];
 };
 
+using AsyncUDP = EthAsyncUDP;
+using AsyncUDPPacket = EthAsyncUDPPacket;
+
 inline bool isMulticast(const IPAddress &ip)
 {
     return (ip[0] & 0xF0) == 0xE0;
 }
 
-#endif // HAS_ETHERNET
+#endif // HAS_ETHERNET && !defined(ARCH_ESP32)
 
-#endif // ASYNC_UDP_H
+#endif // ETH_ASYNC_UDP_H
