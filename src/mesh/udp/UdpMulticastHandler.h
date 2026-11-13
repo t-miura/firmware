@@ -4,13 +4,13 @@
 #include "main.h"
 #include "mesh/Router.h"
 
-#if HAS_ETHERNET && defined(ARCH_NRF52)
+#if HAS_ETHERNET && !defined(ARCH_ESP32)
+#include "mesh/eth/ethAsyncUDP.h"
 #include "mesh/eth/ethClient.h"
 #else
+#include <AsyncUDP.h>
 #include <WiFi.h>
 #endif
-
-#include <AsyncUDP.h>
 
 #if HAS_ETHERNET && defined(ARCH_ESP32)
 #include <ETH.h>
@@ -36,7 +36,7 @@ class UdpMulticastHandler final
             return;
         }
         if (udp.listenMulticast(udpIpAddress, UDP_MULTICAST_DEFAUL_PORT, 64)) {
-#if defined(ARCH_NRF52) || defined(ARCH_PORTDUINO)
+#if (HAS_ETHERNET && !defined(ARCH_ESP32)) || defined(ARCH_PORTDUINO)
             LOG_DEBUG("UDP Listening on IP: %u.%u.%u.%u:%u", udpIpAddress[0], udpIpAddress[1], udpIpAddress[2], udpIpAddress[3],
                       UDP_MULTICAST_DEFAUL_PORT);
 #elif defined(USE_WS5500)
@@ -59,7 +59,7 @@ class UdpMulticastHandler final
             return;
         }
         LOG_DEBUG("Stopping UDP multicast");
-#if defined(ARCH_ESP32) || defined(ARCH_NRF52)
+#if defined(ARCH_ESP32) || defined(ARCH_NRF52) || defined(ARCH_RP2040)
         udp.close();
 #endif
         isRunning = false;
@@ -71,7 +71,7 @@ class UdpMulticastHandler final
             return;
         }
         size_t packetLength = packet.length();
-#if defined(ARCH_NRF52)
+#if HAS_ETHERNET && !defined(ARCH_ESP32)
         IPAddress ip = packet.remoteIP();
         LOG_DEBUG("UDP broadcast from: %u.%u.%u.%u, len=%u", ip[0], ip[1], ip[2], ip[3], packetLength);
 #elif !defined(ARCH_PORTDUINO)
@@ -119,7 +119,7 @@ class UdpMulticastHandler final
         if (!isRunning || !mp || !udp) {
             return false;
         }
-#if defined(ARCH_NRF52)
+#if HAS_ETHERNET && !defined(ARCH_ESP32)
         if (!isEthernetAvailable()) {
             return false;
         }
