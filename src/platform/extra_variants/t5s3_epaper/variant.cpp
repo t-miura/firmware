@@ -1,3 +1,4 @@
+#include "UptimeClock.h"
 #include "configuration.h"
 
 #ifdef T5_S3_EPAPER_PRO
@@ -423,6 +424,9 @@ void t5BacklightHandleUserInput()
 
 void t5TouchSetForcedByTimeout(bool forced)
 {
+#ifdef MESHTASTIC_INCLUDE_INKHUD
+    NicheGraphics::InkHUD::InkHUD::getInstance()->setTouchTimedOut(forced);
+#endif
     if (touchForcedByTimeout == forced) {
         return;
     }
@@ -555,7 +559,7 @@ struct TouchLightSleepEndObserver {
         }
 
         touchStateEpoch++;
-        touchResumeAtMs = millis();
+        touchResumeAtMs = Time::skipZero(Time::getMillis());
         touchIndicatorRefreshPending = !isTouchInputEnabled();
 #ifdef MESHTASTIC_INCLUDE_NICHE_GRAPHICS
         // Clear sleep-time touch overlay after wake.
@@ -602,7 +606,7 @@ bool readTouch(int16_t *x, int16_t *y)
         LOG_DEBUG("touchscreen1: wakeup() on deferred resume");
         touch.wakeup();
         touchNeedsWake = false;
-        suppressFromMs = millis();
+        suppressFromMs = Time::skipZero(Time::getMillis());
         return false;
     }
 
@@ -644,7 +648,7 @@ bool readTouch(int16_t *x, int16_t *y)
             *x = raw_x;
             *y = raw_y;
 #endif
-            LOG_DEBUG("touched(%d/%d)", *x, *y);
+            LOG_INPUT("touched(%d/%d)", *x, *y);
             return true;
         }
     }
