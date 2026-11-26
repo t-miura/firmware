@@ -195,13 +195,27 @@ static void lsIdle()
 #if HAS_BUTTON || defined(BUTTON_PIN)
                 uint32_t espBtnPin = getResolvedButtonPin();
                 if (espBtnPin != 0xFF)
-                    pressed = !digitalRead(espBtnPin);
-#ifdef KB_INT
-                else
-                    pressed = true; // keyboard press (probably) triggered GPIO interrupt
+                    pressed = pressed || !digitalRead(espBtnPin);
 #endif
-#elif defined(KB_INT)
-                pressed = true;
+#if defined(INPUTDRIVER_ENCODER_BTN)
+#if defined(INPUTDRIVER_ENCODER_BTN_ACTIVE_LOW) && !INPUTDRIVER_ENCODER_BTN_ACTIVE_LOW
+                pressed = pressed || digitalRead(INPUTDRIVER_ENCODER_BTN);
+#else
+                pressed = pressed || !digitalRead(INPUTDRIVER_ENCODER_BTN);
+#endif
+#endif
+#if defined(INPUTDRIVER_TWO_WAY_ROCKER_BTN)
+                pressed = pressed || !digitalRead(INPUTDRIVER_TWO_WAY_ROCKER_BTN);
+#endif
+#if defined(TB_PRESS) && (TB_PRESS != 255)
+                pressed = pressed || !digitalRead(TB_PRESS);
+#endif
+#if defined(KB_INT)
+#if defined(KB_INT_WAKE_ON_HIGH) && KB_INT_WAKE_ON_HIGH
+                pressed = pressed || digitalRead(KB_INT);
+#else
+                pressed = pressed || !digitalRead(KB_INT);
+#endif
 #endif
                 if (pressed) {
                     powerFSM.trigger(EVENT_PRESS);
