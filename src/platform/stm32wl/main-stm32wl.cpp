@@ -150,6 +150,39 @@ static void seedRandom()
     randomSeed(seed);
 }
 
+#if defined(ENABLE_HWSERIALLP1)
+static bool stm32wlLpuartValid = false;
+bool stm32wlLpuartAvailable()
+{
+    return stm32wlLpuartValid;
+}
+
+// Routes the LPUART1 kernel clock to HSI16 (16 MHz), which is required to support GNSS baud rates (38400, 115200).
+// Called from stm32wlSetup() regardless of HAS_LSE so any STM32WL board with LPUART1 enabled gets this path.
+static void stm32wlLpuartSetup()
+{
+    // HSI16 starts in ~200 µs; delay(1) yields the watchdog between polls.
+    __HAL_RCC_HSI_ENABLE();
+    uint32_t lpuartStart = millis();
+    while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSIRDY) && Throttle::isWithinTimespanMs(lpuartStart, STM32WL_LPUART1_SWITCH_TIMEOUT_MS)) {
+        delay(1);
+    }
+    if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIRDY)) {
+        __HAL_RCC_LPUART1_CONFIG(RCC_LPUART1CLKSOURCE_HSI);
+        if (__HAL_RCC_GET_LPUART1_SOURCE() == RCC_LPUART1CLKSOURCE_HSI) {
+            stm32wlLpuartValid = true;
+            LOG_INFO("STM32WL: LPUART1 kernel clock routed to HSI16 (16 MHz)");
+        } else {
+            LOG_WARN("STM32WL: failed to switch LPUART1 kernel clock to HSI16, disabling GPS");
+            __HAL_RCC_HSI_DISABLE(); // Don't burn current on an unused oscillator
+        }
+    } else {
+        LOG_WARN("STM32WL: HSI16 failed to start within %dms, disabling GPS", STM32WL_LPUART1_SWITCH_TIMEOUT_MS);
+        __HAL_RCC_HSI_DISABLE(); // Don't leave a failed oscillator enabled
+    }
+}
+#endif
+
 #if HAS_LSE
 // Starts the LSE crystal with a bounded timeout and, if it locks, brings up the STM32 hardware RTC on it.
 static void startLse()
@@ -193,6 +226,9 @@ bool stm32wlRtcAvailable()
 void stm32wlSetup()
 {
     seedRandom();
+#if defined(ENABLE_HWSERIALLP1)
+    stm32wlLpuartSetup();
+#endif
 #if HAS_LSE
     startLse();
 #endif
