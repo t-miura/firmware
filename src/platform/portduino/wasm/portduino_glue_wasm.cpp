@@ -231,7 +231,7 @@ void wasm_config_apply()
 
 // Set the LoRa region at runtime from the UI (browser <select>) or headless
 // (MESH_REGION env, applied by run-node.mjs). Mirrors AdminModule's set_config
-// (lora) region path exactly (AdminModule.cpp:904-937): validate -> first-region
+// (lora) region path: validate -> first-region
 // keygen + enable tx -> initRegion() -> reloadConfig (resetRadioConfig +
 // reconfigure observer recomputes the carrier freq + saveToDisk). A region change
 // is reconfigure-only - no reboot. Returns 0 on success, -1 if validation fails.
@@ -256,9 +256,14 @@ extern "C" EMSCRIPTEN_KEEPALIVE int wasm_set_region(int region)
 
     meshtastic_Config_LoRaConfig validated = config.lora;
     validated.region = newRegion;
-    if (validated.use_preset && RadioInterface::regionSwapForPreset(validated.region, validated.modem_preset) &&
-        RadioInterface::validateConfigRegion(validated))
-        RadioInterface::clampConfigLora(validated, false);
+    if (validated.use_preset && RadioInterface::validateConfigRegion(validated)) {
+        if (RadioInterface::regionSwapForPreset(validated.region, validated.modem_preset)) {
+            RadioInterface::clampConfigLora(validated, false);
+        } else if (getRegion(validated.region)->retiresPreset(validated.modem_preset)) {
+            // A switch into a region that retired the active preset lands on its default instead of failing.
+            RadioInterface::clampConfigLora(validated);
+        }
+    }
     if (!(RadioInterface::validateConfigRegion(validated) && RadioInterface::validateConfigLora(validated)))
         return -1;
 

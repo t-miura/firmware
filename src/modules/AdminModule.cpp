@@ -1054,17 +1054,40 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c, bool fromOthers)
             validatedLora.bandwidth = clampedBandwidth;
         }
 
+        auto rejectRemoteLora = [&]() {
+            LOG_WARN("Invalid LoRa config from another node, rejecting changes");
+            // Validation defers a retired preset to the clamp without notifying, so say why it was refused.
+            if (validatedLora.use_preset && getRegion(validatedLora.region)->retiresPreset(validatedLora.modem_preset)) {
+                const char *presetName = DisplayFormatters::getModemPresetDisplayName(validatedLora.modem_preset, false, true);
+                sendWarning(meshtastic_ClientNotification_NotificationType_LORA_PRESET_INVALID_FOR_REGION,
+                            "Preset %s invalid for %s", presetName, getRegion(validatedLora.region)->name);
+            }
+            validatedLora = oldLoraConfig;
+        };
+
         // If we're setting a new region, check the region is valid and then init the region or discard the change
         if (validatedLora.region != myRegion->code) {
-            const bool allowRegionSwap = oldLoraConfig.use_preset && validatedLora.modem_preset != oldLoraConfig.modem_preset;
-            if (!fromOthers && !allowRegionSwap && validatedLora.use_preset &&
-                RadioInterface::regionSwapForPreset(validatedLora.region, validatedLora.modem_preset) &&
-                RadioInterface::validateConfigRegion(validatedLora)) {
-                // Explicit switch into an EU sibling region keeps that region and clamps the carried-over preset.
-                RadioInterface::clampConfigLora(validatedLora, false);
+            bool regionLoraValid = RadioInterface::validateConfigRegion(validatedLora);
+            if (regionLoraValid) {
+                const bool allowRegionSwap = oldLoraConfig.use_preset && validatedLora.modem_preset != oldLoraConfig.modem_preset;
+                if (!fromOthers && validatedLora.use_preset) {
+                    if (!allowRegionSwap && RadioInterface::regionSwapForPreset(validatedLora.region, validatedLora.modem_preset)) {
+                        // Explicit switch into an EU sibling region keeps that region and clamps the carried-over preset.
+                        RadioInterface::clampConfigLora(validatedLora, false);
+                    } else if (getRegion(validatedLora.region)->retiresPreset(validatedLora.modem_preset)) {
+                        // A local switch into a region that retired the active preset lands on its default instead of failing.
+                        RadioInterface::clampConfigLora(validatedLora);
+                    }
+                }
+                if (!RadioInterface::validateConfigLora(validatedLora)) {
+                    regionLoraValid = false;
+                    if (fromOthers)
+                        rejectRemoteLora();
+                }
             }
-            //  Region has changed so check whether it is valid for e.g. licensing conditions and if the lora config is valid
-            if (RadioInterface::validateConfigRegion(validatedLora) && RadioInterface::validateConfigLora(validatedLora)) {
+            if (!regionLoraValid) {
+                validatedLora = oldLoraConfig;
+            } else if (validatedLora.region != myRegion->code) {
                 // If we're setting region for the first time, init the region and regenerate the keys
                 if (isRegionUnset && validatedLora.region > meshtastic_Config_LoRaConfig_RegionCode_UNSET) {
 #if !(MESHTASTIC_EXCLUDE_PKI_KEYGEN || MESHTASTIC_EXCLUDE_PKI)
@@ -1104,9 +1127,6 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c, bool fromOthers)
                     changes |= SEGMENT_MODULECONFIG;
 #endif
                 changes |= SEGMENT_CONFIG;
-            } else {
-                //  Region validation has failed, so just copy all of the old config over the new config
-                validatedLora = oldLoraConfig;
             }
         } // end of new region handling
 
@@ -1122,10 +1142,9 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c, bool fromOthers)
                     validatedLora.region = swapRegion->code;
                 }
                 if (!swapRegion || !RadioInterface::validateConfigLora(validatedLora)) {
-                    LOG_WARN("Invalid LoRa config from another node, rejecting changes");
                     // Rejecting means rejecting everything: a partial restore of region/preset
                     // could still apply other fields the validation already deemed invalid.
-                    validatedLora = oldLoraConfig;
+                    rejectRemoteLora();
                 }
             } else {
                 LOG_WARN("Invalid LoRa config from client, using corrected values");
