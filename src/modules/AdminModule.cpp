@@ -1071,7 +1071,8 @@ void AdminModule::handleSetConfig(const meshtastic_Config &c, bool fromOthers)
             if (regionLoraValid) {
                 const bool allowRegionSwap = oldLoraConfig.use_preset && validatedLora.modem_preset != oldLoraConfig.modem_preset;
                 if (!fromOthers && validatedLora.use_preset) {
-                    if (!allowRegionSwap && RadioInterface::regionSwapForPreset(validatedLora.region, validatedLora.modem_preset)) {
+                    if (!allowRegionSwap &&
+                        RadioInterface::regionSwapForPreset(validatedLora.region, validatedLora.modem_preset)) {
                         // Explicit switch into an EU sibling region keeps that region and clamps the carried-over preset.
                         RadioInterface::clampConfigLora(validatedLora, false);
                     } else if (getRegion(validatedLora.region)->retiresPreset(validatedLora.modem_preset)) {

@@ -97,7 +97,8 @@ static bool isSwappableEuRegion(meshtastic_Config_LoRaConfig_RegionCode code)
 }
 
 // Region profiles: bundle preset list + regulatory parameters shared across regions
-// presets, retiredPresets, spacing, padding, unitChannelMHz, audio, licensed, text throttle, position throttle, telemetry throttle
+// presets, retiredPresets, spacing, padding, unitChannelMHz, audio, licensed, text throttle, position throttle, telemetry
+// throttle
 const RegionProfile PROFILE_STD = {PRESETS_STD, nullptr, 0, 0, 0, true, false, 0, 1, 1};
 // ARIB STD-T108: preset list (#11566) + 200 kHz unit-channel raster (#11559)
 const RegionProfile PROFILE_JP = {PRESETS_JP, PRESETS_JP_RETIRED, 0, 0, 0.2f, true, false, 0, 1, 1};
