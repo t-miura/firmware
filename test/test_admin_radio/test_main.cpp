@@ -45,6 +45,7 @@
 // release-only stub because these tests need to inspect the captured message text, not just avoid leaks.
 static std::vector<std::string> capturedWarnings;
 static std::vector<meshtastic_ClientNotification_NotificationType> capturedTypes; // parallel to capturedWarnings
+static std::vector<meshtastic_LogRecord_Level> capturedLevels;                    // parallel to capturedWarnings
 
 class MockMeshService : public MeshService
 {
@@ -53,6 +54,7 @@ class MockMeshService : public MeshService
     {
         capturedWarnings.push_back(n->message);
         capturedTypes.push_back(n->type);
+        capturedLevels.push_back(n->level);
         releaseClientNotificationToPool(n);
     }
 };
@@ -577,6 +579,25 @@ static void test_clampConfigLora_pendingPresetSwitchUsesPendingName()
     TEST_ASSERT_TRUE(RadioInterface::uses_default_frequency_slot);
 }
 
+static void test_clampConfigLora_allowRegionSwapFalseClampsEuSibling()
+{
+    // Disabling allowRegionSwap keeps an EU sibling region and clamps its preset to the region default.
+    resetUnnamedPrimaryChannel();
+    meshtastic_Config_LoRaConfig cfg = meshtastic_Config_LoRaConfig_init_zero;
+    cfg.region = meshtastic_Config_LoRaConfig_RegionCode_EU_866;
+    cfg.use_preset = true;
+    cfg.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+
+    RadioInterface::clampConfigLora(cfg, false);
+
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_RegionCode_EU_866, cfg.region);
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_ModemPreset_LITE_FAST, cfg.modem_preset);
+    TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+    TEST_ASSERT_EQUAL_INT(1, (int)capturedTypes.size());
+    TEST_ASSERT_EQUAL(meshtastic_ClientNotification_NotificationType_LORA_PRESET_INVALID_FOR_REGION, capturedTypes[0]);
+    TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_INFO, capturedLevels[0]);
+}
+
 // -----------------------------------------------------------------------
 // RegionInfo preset list integrity tests
 // -----------------------------------------------------------------------
@@ -732,6 +753,7 @@ static meshtastic_DeviceState savedDeviceState;
 static meshtastic_User savedOwner;
 static meshtastic_LocalConfig savedConfig;
 static meshtastic_ChannelFile savedChannelFile;
+static meshtastic_CriticalErrorCode savedErrorCode;
 // Only the ham dispatcher test installs a router (allocErrorResponse() allocates through it).
 // Saved/torn down for every test so a failed assertion's longjmp cannot leave one dangling.
 static Router *savedRouter;
@@ -749,6 +771,8 @@ static void replaceAdminRadioGlobals()
     savedOwner = owner;
     savedConfig = config;
     savedChannelFile = channelFile;
+    savedErrorCode = error_code;
+    error_code = meshtastic_CriticalErrorCode_NONE;
     replacementNodeDB = new NodeDB();
     nodeDB = replacementNodeDB;
 }
@@ -771,6 +795,7 @@ static void restoreAdminRadioGlobals()
     owner = savedOwner;
     config = savedConfig;
     channelFile = savedChannelFile;
+    error_code = savedErrorCode;
     initRegion();
 }
 
@@ -1281,6 +1306,58 @@ static void test_handleSetConfig_fromLocal_invalidPresetClamped()
     // fromOthers=false: invalid preset should be clamped to the region's default
     const RegionInfo *eu868 = getRegion(meshtastic_Config_LoRaConfig_RegionCode_EU_868);
     TEST_ASSERT_EQUAL(eu868->getDefaultPreset(), config.lora.modem_preset);
+}
+
+static void test_handleSetConfig_fromLocal_explicitEuSiblingRegionClampsPreset()
+{
+    // Switching directly from EU_868/LONG_FAST to EU_866/LONG_FAST keeps EU_866 and clamps to LITE_FAST.
+    resetUnnamedPrimaryChannel();
+    config.lora = meshtastic_Config_LoRaConfig_init_zero;
+    config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
+    config.lora.use_preset = true;
+    config.lora.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+    initRegion();
+    testAdmin->deferSaves();
+
+    meshtastic_Config c = makeLoraSetConfig(meshtastic_Config_LoRaConfig_RegionCode_EU_866, true,
+                                            meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST);
+    testAdmin->handleSetConfig(c, false);
+
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_RegionCode_EU_866, config.lora.region);
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_RegionCode_EU_866, myRegion->code);
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_ModemPreset_LITE_FAST, config.lora.modem_preset);
+    TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+    TEST_ASSERT_EQUAL_INT(1, (int)capturedTypes.size());
+    TEST_ASSERT_EQUAL(meshtastic_ClientNotification_NotificationType_LORA_PRESET_INVALID_FOR_REGION, capturedTypes[0]);
+    TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_INFO, capturedLevels[0]);
+}
+
+static void test_handleSetConfig_fromLocal_customModeToEu866ClampsPreset()
+{
+    // Switching from custom mode into EU_866 with default LONG_FAST clamps to LITE_FAST instead of swapping back to EU_868.
+    resetUnnamedPrimaryChannel();
+    config.lora = meshtastic_Config_LoRaConfig_init_zero;
+    config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_EU_868;
+    config.lora.use_preset = false;
+    config.lora.bandwidth = 250;
+    config.lora.spread_factor = 11;
+    config.lora.coding_rate = 5;
+    config.lora.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+    initRegion();
+    testAdmin->deferSaves();
+
+    meshtastic_Config c = makeLoraSetConfig(meshtastic_Config_LoRaConfig_RegionCode_EU_866, true,
+                                            meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST);
+    testAdmin->handleSetConfig(c, false);
+
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_RegionCode_EU_866, config.lora.region);
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_RegionCode_EU_866, myRegion->code);
+    TEST_ASSERT_TRUE(config.lora.use_preset);
+    TEST_ASSERT_EQUAL(meshtastic_Config_LoRaConfig_ModemPreset_LITE_FAST, config.lora.modem_preset);
+    TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+    TEST_ASSERT_EQUAL_INT(1, (int)capturedTypes.size());
+    TEST_ASSERT_EQUAL(meshtastic_ClientNotification_NotificationType_LORA_PRESET_INVALID_FOR_REGION, capturedTypes[0]);
+    TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_INFO, capturedLevels[0]);
 }
 
 static void test_handleSetConfig_fromOthers_validPresetAccepted()
@@ -2672,6 +2749,7 @@ void setUp(void)
     testAdmin = new AdminModuleTestShim();
     capturedWarnings.clear();
     capturedTypes.clear();
+    capturedLevels.clear();
     // Every test gets its own NodeDB and its own copy of the globals the admin handlers write.
     replaceAdminRadioGlobals();
 }
@@ -2753,6 +2831,7 @@ void setup()
     RUN_TEST(test_clampConfigLora_narrowPresetOnHam125cmDoesNotSwap);
     RUN_TEST(test_validateConfigLora_siblingLockedPresetStillFailsValidation);
     RUN_TEST(test_clampConfigLora_pendingPresetSwitchUsesPendingName);
+    RUN_TEST(test_clampConfigLora_allowRegionSwapFalseClampsEuSibling);
 
     // RegionInfo preset list integrity
     RUN_TEST(test_presetsStd_hasTenEntries);
@@ -2769,6 +2848,8 @@ void setup()
     // handleSetConfig fromOthers dispatch
     RUN_TEST(test_handleSetConfig_fromOthers_invalidPresetRejected);
     RUN_TEST(test_handleSetConfig_fromLocal_invalidPresetClamped);
+    RUN_TEST(test_handleSetConfig_fromLocal_explicitEuSiblingRegionClampsPreset);
+    RUN_TEST(test_handleSetConfig_fromLocal_customModeToEu866ClampsPreset);
     RUN_TEST(test_handleSetConfig_fromOthers_validPresetAccepted);
     RUN_TEST(test_handleSetConfig_fromOthers_invalidChannelNumFullyRejected);
     RUN_TEST(test_clampBandwidthCode_zeroMapsToDefaultOthersUnchanged);
