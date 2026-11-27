@@ -33,5 +33,8 @@ cp $BUILDDIR/$basename.map $OUTDIR/ 2>/dev/null || true
 echo "Copying uf2 file"
 cp $BUILDDIR/$basename.uf2 $OUTDIR/$basename.uf2
 
+echo "Copying bin file"
+cp $BUILDDIR/$basename.bin $OUTDIR/$basename.bin
+
 echo "Copying manifest"
 cp $BUILDDIR/$basename.mt.json $OUTDIR/$basename.mt.json || true
