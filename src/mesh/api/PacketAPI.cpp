@@ -136,7 +136,7 @@ bool PacketAPI::notifyProgrammingMode(void)
 bool PacketAPI::checkIsConnected()
 {
     isConnected |= server->hasData();
-    return isConnected && server->available();
+    return isConnected;
 }
 
 #endif
