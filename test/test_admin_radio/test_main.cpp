@@ -585,8 +585,8 @@ static void test_validateConfigLora_invalidPresetIsQuiet()
 
 static void test_clampConfigLora_jpPresetMigrationRepairsSlot()
 {
-    // JP LONG_MODERATE and LONG_SLOW ran at 125 kHz (15 ARIB slots).
-    // Migrating to 250 kHz LONG_FAST (7 ARIB slots) invalidates slots 8..15 solely because bandwidth
+    // JP LONG_MODERATE and LONG_SLOW ran at 125 kHz (24 pre-ARIB slots / 15 ARIB slots).
+    // Migrating to 250 kHz LONG_FAST (7 ARIB slots) invalidates slots 8..24 solely because bandwidth
     // widened: the derived slot repair must stay informational (no Critical Fault #7), clear the
     // failed pin to 0 (Auto), and resolve the fallback slot (6) from the pending migrated preset
     // rather than stale global config.lora.
@@ -596,7 +596,7 @@ static void test_clampConfigLora_jpPresetMigrationRepairsSlot()
     config.lora.use_preset = true;
     config.lora.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_MODERATE;
 
-    // Case 1: LONG_MODERATE with slot 14 (<=15) -> clears pin to 0, resolves to LONG_FAST slot 6.
+    // Case 1: LONG_MODERATE with slot 14 (<=24) -> clears pin to 0, resolves to LONG_FAST slot 6.
     meshtastic_Config_LoRaConfig modCfg = meshtastic_Config_LoRaConfig_init_zero;
     modCfg.region = meshtastic_Config_LoRaConfig_RegionCode_JP;
     modCfg.use_preset = true;
@@ -617,7 +617,7 @@ static void test_clampConfigLora_jpPresetMigrationRepairsSlot()
     TEST_ASSERT_EQUAL(meshtastic_ClientNotification_NotificationType_LORA_CHANNEL_NUM_INVALID, capturedTypes[1]);
     TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_INFO, capturedLevels[1]);
 
-    // Case 2: LONG_SLOW at upper valid pre-migration slot (15) -> clears pin to 0, resolves to LONG_FAST slot 6 at INFO.
+    // Case 2: LONG_SLOW at upper valid pre-ARIB slot (24) -> clears pin to 0, resolves to LONG_FAST slot 6 at INFO.
     capturedWarnings.clear();
     capturedTypes.clear();
     capturedLevels.clear();
@@ -626,7 +626,7 @@ static void test_clampConfigLora_jpPresetMigrationRepairsSlot()
     slowCfg.region = meshtastic_Config_LoRaConfig_RegionCode_JP;
     slowCfg.use_preset = true;
     slowCfg.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_SLOW;
-    slowCfg.channel_num = 15;
+    slowCfg.channel_num = 24;
 
     RadioInterface::clampConfigLora(slowCfg);
 
@@ -664,7 +664,7 @@ static void test_clampConfigLora_jpMigrationPreservesValidSlot()
 
 static void test_clampConfigLora_jpMigrationStillErrorsBadSlot()
 {
-    // Slots that were already invalid before migration (>15 for JP 125 kHz, or paired with a
+    // Slots that were already invalid before migration (>24 for pre-ARIB JP 125 kHz, or paired with a
     // fabricated preset enum) must retain ERROR reporting and INVALID_RADIO_SETTING.
     resetUnnamedPrimaryChannel();
 
@@ -672,7 +672,7 @@ static void test_clampConfigLora_jpMigrationStillErrorsBadSlot()
     cfg.region = meshtastic_Config_LoRaConfig_RegionCode_JP;
     cfg.use_preset = true;
     cfg.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_SLOW;
-    cfg.channel_num = 16;
+    cfg.channel_num = 25;
 
     RadioInterface::clampConfigLora(cfg);
 
@@ -1322,6 +1322,134 @@ static void test_clampConfigLora_JP_pendingPresetSwitch()
     TEST_ASSERT_EQUAL_UINT32(6, toLongFast.channel_num);
     TEST_ASSERT_TRUE(RadioInterface::uses_default_frequency_slot);
     TEST_ASSERT_FALSE(RadioInterface::uses_custom_channel_name);
+}
+
+static void test_clampConfigLora_JP_preAribSlotMigratesQuietly()
+{
+    // Pre-ARIB JP firmware had 12 slots on 250 kHz (LONG_FAST) and 6 slots on 500 kHz (SHORT_TURBO).
+    // Moving onto the ARIB split grid (7 / 5 slots) must migrate pre-ARIB pinned slots (8..12 at
+    // 250 kHz, 6 at 500 kHz) to 0 at INFO without latching Critical Fault #7, while slots exceeding
+    // the pre-ARIB ceiling still log ERROR and latch INVALID_RADIO_SETTING.
+    resetUnnamedPrimaryChannel();
+
+    auto resetEvents = []() {
+        error_code = meshtastic_CriticalErrorCode_NONE;
+        capturedWarnings.clear();
+        capturedTypes.clear();
+        capturedLevels.clear();
+    };
+
+    for (uint16_t preAribSlot : {8, 11, 12}) {
+        resetEvents();
+        meshtastic_Config_LoRaConfig cfg = meshtastic_Config_LoRaConfig_init_zero;
+        cfg.region = meshtastic_Config_LoRaConfig_RegionCode_JP;
+        cfg.use_preset = true;
+        cfg.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+        cfg.channel_num = preAribSlot;
+
+        TEST_ASSERT_FALSE(RadioInterface::validateConfigLora(cfg));
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+        TEST_ASSERT_TRUE(capturedTypes.empty());
+
+        RadioInterface::clampConfigLora(cfg);
+        TEST_ASSERT_EQUAL_UINT32(0, cfg.channel_num);
+        TEST_ASSERT_TRUE(RadioInterface::uses_default_frequency_slot);
+        TEST_ASSERT_EQUAL_UINT32(6, RadioInterface::resolveFrequencySlot(cfg, ""));
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+        TEST_ASSERT_EQUAL_INT(1, (int)capturedTypes.size());
+        TEST_ASSERT_EQUAL(meshtastic_ClientNotification_NotificationType_LORA_CHANNEL_NUM_INVALID, capturedTypes[0]);
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_INFO, capturedLevels[0]);
+    }
+
+    // 500 kHz (SHORT_TURBO): ARIB count is 5, pre-ARIB count was 6 -> slot 6 migrates at INFO, 7 errors.
+    {
+        resetEvents();
+        meshtastic_Config_LoRaConfig turbo = meshtastic_Config_LoRaConfig_init_zero;
+        turbo.region = meshtastic_Config_LoRaConfig_RegionCode_JP;
+        turbo.use_preset = true;
+        turbo.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_SHORT_TURBO;
+        turbo.channel_num = 6;
+
+        TEST_ASSERT_FALSE(RadioInterface::validateConfigLora(turbo));
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+        RadioInterface::clampConfigLora(turbo);
+        TEST_ASSERT_EQUAL_UINT32(0, turbo.channel_num);
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+        TEST_ASSERT_EQUAL_INT(1, (int)capturedLevels.size());
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_INFO, capturedLevels[0]);
+
+        resetEvents();
+        turbo.channel_num = 7;
+        RadioInterface::clampConfigLora(turbo);
+        TEST_ASSERT_EQUAL_UINT32(0, turbo.channel_num);
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING, error_code);
+        TEST_ASSERT_EQUAL_INT(1, (int)capturedLevels.size());
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_ERROR, capturedLevels[0]);
+    }
+
+    // 250 kHz slot 13 exceeds even the pre-ARIB ceiling (12) -> ERROR + INVALID_RADIO_SETTING on both validate and clamp.
+    {
+        resetEvents();
+        meshtastic_Config_LoRaConfig tooHigh = meshtastic_Config_LoRaConfig_init_zero;
+        tooHigh.region = meshtastic_Config_LoRaConfig_RegionCode_JP;
+        tooHigh.use_preset = true;
+        tooHigh.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+        tooHigh.channel_num = 13;
+
+        TEST_ASSERT_FALSE(RadioInterface::validateConfigLora(tooHigh));
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING, error_code);
+        TEST_ASSERT_EQUAL_INT(1, (int)capturedLevels.size());
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_ERROR, capturedLevels[0]);
+
+        resetEvents();
+        RadioInterface::clampConfigLora(tooHigh);
+        TEST_ASSERT_EQUAL_UINT32(0, tooHigh.channel_num);
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING, error_code);
+        TEST_ASSERT_EQUAL_INT(1, (int)capturedLevels.size());
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_ERROR, capturedLevels[0]);
+    }
+
+    // Custom mode on JP 250 kHz: slot 11 migrates quietly; slot 13 errors.
+    {
+        resetEvents();
+        meshtastic_Config_LoRaConfig custom = meshtastic_Config_LoRaConfig_init_zero;
+        custom.region = meshtastic_Config_LoRaConfig_RegionCode_JP;
+        custom.use_preset = false;
+        custom.bandwidth = 250;
+        custom.spread_factor = 11;
+        custom.coding_rate = 5;
+        custom.channel_num = 11;
+
+        TEST_ASSERT_FALSE(RadioInterface::validateConfigLora(custom));
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+        RadioInterface::clampConfigLora(custom);
+        TEST_ASSERT_EQUAL_UINT32(0, custom.channel_num);
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_NONE, error_code);
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_INFO, capturedLevels[0]);
+
+        resetEvents();
+        custom.channel_num = 13;
+        RadioInterface::clampConfigLora(custom);
+        TEST_ASSERT_EQUAL_UINT32(0, custom.channel_num);
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING, error_code);
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_ERROR, capturedLevels[0]);
+    }
+
+    // Non-JP regions are unaffected by unrasteredSlotCount() (always returns 0) -> OOB slots still error.
+    {
+        resetEvents();
+        meshtastic_Config_LoRaConfig usCfg = meshtastic_Config_LoRaConfig_init_zero;
+        usCfg.region = meshtastic_Config_LoRaConfig_RegionCode_US;
+        usCfg.use_preset = true;
+        usCfg.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+        usCfg.channel_num = 105;
+
+        RadioInterface::clampConfigLora(usCfg);
+        TEST_ASSERT_EQUAL_UINT32(0, usCfg.channel_num);
+        TEST_ASSERT_EQUAL(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING, error_code);
+        TEST_ASSERT_EQUAL_INT(1, (int)capturedLevels.size());
+        TEST_ASSERT_EQUAL(meshtastic_LogRecord_Level_ERROR, capturedLevels[0]);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -3614,6 +3742,7 @@ void setup()
     RUN_TEST(test_clampConfigLora_JP_slotBounds);
     RUN_TEST(test_clampConfigLora_JP_customModeSlotBounds);
     RUN_TEST(test_clampConfigLora_JP_pendingPresetSwitch);
+    RUN_TEST(test_clampConfigLora_JP_preAribSlotMigratesQuietly);
 
     // handleSetConfig fromOthers dispatch
     RUN_TEST(test_handleSetConfig_fromOthers_invalidPresetRejected);
